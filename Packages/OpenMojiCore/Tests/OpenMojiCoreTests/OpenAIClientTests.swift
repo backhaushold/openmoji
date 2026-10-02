@@ -294,7 +294,7 @@ private let cannedPNGBase64 =
         #expect(StubURLProtocol.recorded.count == 1)
     }
 
-    @Test func aTaskCancelledBeforeStartingThrowsCancelled() async {
+    @Test func aTaskCancelledBeforeStartingThrowsCancelled() async throws {
         StubURLProtocol.reset(.respond(status: 200, body: successBody()))
         let client = makeClient()
         let key = apiKey
@@ -304,6 +304,12 @@ private let cannedPNGBase64 =
             return try await client.generate(prompt: "a happy cat", apiKey: key)
         }
         await #expect(throws: GenerationError.cancelled) { try await task.value }
+
+        // `generate` has already thrown, but URLSession still starts the
+        // cancelled load on its own queue and the stub records it a moment
+        // later. Drain it (the protocol is stopped right after it starts) so
+        // it can't land in the next test's `reset`ed state.
+        try await waitUntil { StubURLProtocol.stopLoadingCount >= 1 }
     }
 
     // MARK: Helpers

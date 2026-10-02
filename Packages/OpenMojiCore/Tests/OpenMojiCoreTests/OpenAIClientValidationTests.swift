@@ -21,11 +21,9 @@ extension OpenAIClientTests {
         )
     }
 
-    /// The validation requests the stub saw. Filtered to `GET` because a
-    /// `generate` request from a cancelled-before-start test in the parent
-    /// suite can reach the stub late and be recorded under this test.
+    /// The validation requests the stub saw.
     private func validationRequests() -> [URLRequest] {
-        StubURLProtocol.recorded.map(\.request).filter { $0.httpMethod == "GET" }
+        StubURLProtocol.recorded.map(\.request)
     }
 
     private func onlyValidationRequest() throws -> URLRequest {
