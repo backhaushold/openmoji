@@ -12,7 +12,7 @@ let package = Package(
         .target(name: "OpenMojiCore"),
         .testTarget(
             name: "OpenMojiCoreTests",
-            dependencies: ["OpenMojiCore"],
+            dependencies: ["OpenMojiCore"]
         ),
-    ],
+    ]
 )

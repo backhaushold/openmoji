@@ -1,5 +1,5 @@
-@testable import OpenMojiCore
 import Testing
+@testable import OpenMojiCore
 
 @Test func moduleLoads() {
     #expect(OpenMojiCore.moduleName == "OpenMojiCore")
