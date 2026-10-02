@@ -8,6 +8,11 @@ disabled_rules:
   - file_length
   - force_try
   - trailing_comma
+  - large_tuple # test helpers return (request, body, headers)-style tuples
+
+# Codable response shapes (OpenAI JSON) nest Item > CodingKeys inside the client.
+nesting:
+  type_level: 3
 
 excluded:
   - "**/.build"

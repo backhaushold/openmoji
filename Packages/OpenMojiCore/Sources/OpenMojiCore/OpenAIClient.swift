@@ -123,13 +123,13 @@ public actor OpenAIClient {
             throw .processingFailed
         }
         #if DEBUG
-        if let usage = response.usage {
-            logger.debug("""
-                usage input=\(usage.inputTokens ?? -1, privacy: .public) \
-                output=\(usage.outputTokens ?? -1, privacy: .public) \
-                total=\(usage.totalTokens ?? -1, privacy: .public)
-                """)
-        }
+            if let usage = response.usage {
+                logger.debug("""
+                    usage input=\(usage.inputTokens ?? -1, privacy: .public) \
+                    output=\(usage.outputTokens ?? -1, privacy: .public) \
+                    total=\(usage.totalTokens ?? -1, privacy: .public)
+                    """)
+            }
         #endif
         guard let encoded = response.data?.first?.b64Json,
               let image = Data(base64Encoded: encoded),

@@ -9,7 +9,6 @@ import Testing
 /// is process-wide and Swift Testing runs separate suites in parallel, so
 /// only tests inside that one `.serialized` suite are safe from each other.
 extension OpenAIClientTests {
-
     // A fake key on purpose: it must not look like `sk-...`.
     private var candidateKey: String { "test-fake-key-0000" }
 

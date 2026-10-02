@@ -10,7 +10,6 @@ private let cannedPNGBase64 =
 /// response, the §5.3 behaviour and the routing into `ErrorMapper` (§6).
 /// Serialized because the stub's state is process-wide.
 @Suite(.serialized) struct OpenAIClientTests {
-
     // A fake key on purpose: it must not look like `sk-...` (secret scanners,
     // and the hygiene tests that assert no `sk-` leaks).
     private let apiKey = "test-fake-key-0000"
