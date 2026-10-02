@@ -84,6 +84,8 @@ app and release lane.
 - No third-party SDKs or package dependencies (NFR-7); OpenAI calls go through our own `URLSession` client.
 - The OpenAI API key lives only in the Keychain: never log it, put it in errors, or commit it.
 - Verify OpenAI/Apple API details against official docs, not memory — the PRD already had stale model facts.
+- Open questions are `decision` beads (label `open-question`). Resolving one means: `bd close <id> --reason "Ratified: ..."`,
+  mark it resolved in `docs/open-questions.md`, fix any tech-spec text that says it's open, and update the PRD's line for it.
 
 ## Build & Test
 
