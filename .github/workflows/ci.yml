@@ -22,11 +22,11 @@ concurrency:
 jobs:
   verify:
     name: verify
-    # Package.swift is swift-tools-version 6.4, which needs Xcode 27. The
-    # `macos-latest` label is macOS 26 with Xcode 26.x (Swift 6.3 at most), so
-    # use the `xcode-27` image (macOS 27, Xcode 27.0 default; public preview).
-    # Switch back to `macos-latest` once its default image ships Xcode 27.
-    runs-on: xcode-27
+    # macOS is required: OpenMojiCore uses Apple-only frameworks (ImageIO,
+    # UniformTypeIdentifiers, Security, OSLog), and the extension tests need
+    # the iOS SDK and a simulator. Package.swift is swift-tools-version 6.2,
+    # the lowest that knows `.iOS(.v26)`, so the stock image's Xcode 26 works.
+    runs-on: macos-latest
     timeout-minutes: 30
     defaults:
       run:
@@ -35,8 +35,9 @@ jobs:
       HOMEBREW_NO_AUTO_UPDATE: "1"
       HOMEBREW_NO_INSTALL_CLEANUP: "1"
       HOMEBREW_NO_ENV_HINTS: "1"
-      # The owner's device is an iPad Air; this simulator ships with the image.
-      DESTINATION: platform=iOS Simulator,name=iPad Air 11-inch (M4)
+      # Pinned so the format gate doesn't drift with the image's preinstalled
+      # version (rule sets differ between releases). Matches local dev.
+      SWIFTFORMAT_VERSION: 0.63.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -74,7 +75,14 @@ jobs:
         run: echo "DERIVED_DATA=$RUNNER_TEMP/DerivedData" >> "$GITHUB_ENV"
 
       - name: Install tools
-        run: brew install gitleaks swiftlint
+        run: |
+          brew install gitleaks swiftlint
+          mkdir -p "$RUNNER_TEMP/sfbin"
+          curl -fsSL -o "$RUNNER_TEMP/swiftformat.zip" \
+            "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat.zip"
+          unzip -o "$RUNNER_TEMP/swiftformat.zip" -d "$RUNNER_TEMP/sfbin"
+          chmod +x "$RUNNER_TEMP/sfbin/swiftformat"
+          echo "$RUNNER_TEMP/sfbin" >> "$GITHUB_PATH"
 
       # 1. Secret scan (REL-6) over the full history; findings are redacted.
       - name: gitleaks
@@ -99,11 +107,17 @@ jobs:
           restore-keys: |
             deriveddata-${{ runner.os }}-
 
-      # 2. Lint (SwiftFormat is preinstalled on the runner image).
+      # 2. Lint, pull requests only: a squash-merge can't change content that
+      # was already linted, so the push-to-main run skips it.
       - name: SwiftFormat lint
-        run: swiftformat --lint .
+        if: github.event_name == 'pull_request'
+        run: |
+          test "$(swiftformat --version)" = "$SWIFTFORMAT_VERSION" \
+            || { echo "::error::swiftformat is $(swiftformat --version), expected $SWIFTFORMAT_VERSION"; exit 1; }
+          swiftformat --lint .
 
       - name: SwiftLint
+        if: github.event_name == 'pull_request'
         run: swiftlint lint --strict
 
       # 3. OpenMojiCore unit tests on the Mac host.
@@ -117,13 +131,29 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
+      # Pick an available iPad simulator by UDID (robust to device-name drift
+      # across Xcode versions); prefer an iPad Air, the family's device.
+      - name: Select an iPad simulator
+        id: sim
+        if: steps.scope.outputs.docs_only != 'true'
+        run: |
+          devices="$(xcrun simctl list devices available)"
+          line="$(grep -E 'iPad Air' <<<"$devices" | head -n1)"
+          [ -n "$line" ] || line="$(grep -E 'iPad' <<<"$devices" | head -n1)"
+          udid="$(grep -oE '[0-9A-F-]{36}' <<<"$line" | head -n1)"
+          if [ -z "$udid" ]; then echo "::error::No iPad simulator available"; exit 1; fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          echo "Using: $line"
+
       - name: xcodebuild test (OpenMojiMessagesTests)
         if: steps.scope.outputs.docs_only != 'true'
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
           xcodebuild test \
             -project OpenMoji.xcodeproj \
             -scheme OpenMojiMessagesTests \
-            -destination "$DESTINATION" \
+            -destination "id=$SIM_UDID" \
             -derivedDataPath "$DERIVED_DATA" \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions
