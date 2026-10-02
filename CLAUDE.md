@@ -58,20 +58,33 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 <!-- END BEADS INTEGRATION -->
 
 
+## Agent profile
+
+This repo opts into **Team-maintainer**: agents may commit, push, open PRs and
+squash-merge on green CI as part of landing requested work (feature branch + PR,
+never direct to `main`). A current "don't commit/push" from the user still wins.
+
+## Project
+
+OpenMoji: an iPad-only iMessage app extension that turns a text prompt into an
+emoji-style sticker via the OpenAI Images API. Family use, TestFlight internal
+testers only, no backend. Pre-code: spec phase (M2) is done; M3 scaffolds the
+app and release lane.
+
+- PRD (scope source of truth; locked decisions D1–D10, FR/NFR/REL IDs):
+  https://claude.ai/code/artifact/4eb3c358-d044-4b4f-a48b-2aca31cd3bbe (a Claude Doc — read via the Docs connector)
+- Tech spec: `docs/tech-spec.md` · ADRs: `docs/adr/` · open questions: `docs/open-questions.md`
+
+## Rules
+
+- Don't reopen a locked PRD decision (D1–D10) or change a FR/NFR/REL without flagging it to the user.
+- Any new significant technical decision gets an ADR in `docs/adr/` (next number, add to its README index).
+- Releases publish **only from the local release Mac** (`make testflight`, secrets from 1Password).
+  CI verifies and alerts but never signs or uploads. **No GitHub Actions secrets**; workflows use only `GITHUB_TOKEN`.
+- No third-party SDKs or package dependencies (NFR-7); OpenAI calls go through our own `URLSession` client.
+- The OpenAI API key lives only in the Keychain: never log it, put it in errors, or commit it.
+- Verify OpenAI/Apple API details against official docs, not memory — the PRD already had stale model facts.
+
 ## Build & Test
 
-_Add your build and test commands here_
-
-```bash
-# Example:
-# npm install
-# npm test
-```
-
-## Architecture Overview
-
-_Add a brief overview of your project architecture_
-
-## Conventions & Patterns
-
-_Add your project-specific conventions here_
+_Not yet — added in M3 when `project.yml`, `Packages/OpenMojiCore` and the release lane exist (tech spec §3, §11, §12)._
