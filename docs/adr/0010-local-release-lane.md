@@ -17,10 +17,13 @@ REL-2 requires reusing Sagelet's pipeline structure, credentials model and runne
   - gitleaks (REL-6) and `swift test` (REL-7).
   - "What to Test" from `git log` (REL-8).
   - Internal-group distribution (REL-5).
-  - A scheduled GitHub Actions expiry **alert** (REL-9).
+  - A secret-free scheduled GitHub Actions expiry **alert** that reads the upload date from the annotated `build-N` tag the lane pushes (REL-9), plus `make testflight-status` for the exact date.
 
-## REL-4 interpretation (flagged)
-REL-4 says "API key held as a CI secret, not a personal Apple ID session". The lane authenticates with an ASC API key held in 1Password, never an Apple ID session, which meets the intent. The read-only expiry key is also held as a GitHub Actions secret.
+## Constraints (user, 2026-10-02)
+- **No publishing from CI; local only.** GitHub Actions verifies and alerts but never signs or uploads.
+- **No secrets in GitHub.** The ASC API key lives only in 1Password and is used only by the local lane. Workflows use only the built-in `GITHUB_TOKEN`.
+
+The PRD's REL-4 and REL-9 were updated to match: REL-4 holds the key in 1Password for the local command, and REL-9 is an alert followed by a local release.
 
 ## Alternatives
 - **Full CI signing on a GitHub macOS runner** (temporary keychain, cert and profiles as secrets). This allows unattended scheduled rebuilds (REL-9's rebuild option), but departs from REL-2's runner and puts the distribution certificate in GitHub.
@@ -28,5 +31,5 @@ REL-4 says "API key held as a CI secret, not a personal Apple ID session". The l
 
 ## Consequences
 - Releases need the owner's Mac, 1Password and the signing keychain; nothing ships while that Mac is unavailable.
-- REL-9 is satisfied by an alert, not an automatic rebuild.
+- REL-9 is satisfied by an alert, not an automatic rebuild. The alert infers expiry from tag dates rather than querying App Store Connect, since that would need a key in GitHub.
 - The Sagelet pitfalls (Homebrew rsync, login-keychain `errSecInternalComponent`, `xcode-select`) are designed in from the start.
