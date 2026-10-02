@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "openmoji",
+  "project_id": "30ebffde-bb9a-4953-b2b5-c6a599ba3709"
+}
