@@ -13,7 +13,7 @@ Resolved items stay listed so the history is visible. "Blocks" names the earlies
 | OQ-2 | Universal or iPad-only? | **Resolved** 2026-10-02: iPad-only | — | [ADR-0014](adr/0014-ipad-only-device-family.md) |
 | OQ-3 | Sagelet pipeline specifics (tooling, runner, signing) | **Resolved** 2026-10-02: local `make testflight`, 1Password, manual signing, reimplemented for OpenMoji | — | Tech spec §12, [ADR-0010](adr/0010-local-release-lane.md) |
 | OQ-4 | Default quality level: `low`, `medium` or `high`? | Open | M1 → M4 | Default `medium` until M1 measures cost, latency and look (tech spec §9). 2.5 adds `xhigh` and `max` levels |
-| OQ-5 | App Store Connect record name ("OpenMoji" is taken) | Open | M3 (record is needed for the first upload) | "GenmojiAI" uses Apple's feature name ("Genmoji"), so trademark risk even for a TestFlight-only app. The record name is never shown to testers in the store, only in TestFlight. Candidates should avoid "Genmoji" and "Memoji", e.g. "OpenMoji Family", "OpenMoji Stickers" (availability unchecked) |
+| OQ-5 | App Store Connect record name ("OpenMoji" is taken) | **Resolved** 2026-10-02: "OpenMoji Family" | — | "GenmojiAI" uses Apple's feature name ("Genmoji"), so trademark risk even for a TestFlight-only app. The record name is never shown to testers in the store, only in TestFlight. Candidates should avoid "Genmoji" and "Memoji", e.g. "OpenMoji Family", "OpenMoji Stickers" (availability unchecked) |
 
 ## New from the tech spec
 

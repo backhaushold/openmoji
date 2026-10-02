@@ -18,7 +18,7 @@ OpenMoji is an iPad-only iMessage app extension that turns a text prompt into an
 | OQ-1 presentation context | Messages context (app drawer); media context deferred | `MSSupportedPresentationContexts = [MSMessagesAppPresentationContextMessages]` only |
 | OQ-2 device family | **iPad-only** (resolved 2026-10-02) | `TARGETED_DEVICE_FAMILY = 2` on both targets — [ADR-0014](adr/0014-ipad-only-device-family.md) |
 | OQ-3 Sagelet pipeline specifics | Read from `backhaushold/sagelet` @ `4ec916b` | Closed by §12 and [ADR-0010](adr/0010-local-release-lane.md) |
-| Product name / bundle ID | OpenMoji, `com.backhaushold.openmoji` | App Store Connect record name still open |
+| Product name / bundle ID | OpenMoji, `com.backhaushold.openmoji` | App Store Connect record name "OpenMoji Family" (OQ-5, resolved 2026-10-02) |
 | Target | iPad Air (4th gen), iPadOS 26.7; deployment target 26.0 (D8) | — |
 
 ### 1.2 Corrections to PRD facts (flagged, not reopened)
@@ -434,7 +434,7 @@ OpenMoji's lane is **written from scratch for this repo**. Sagelet (`backhaushol
 1. Register App IDs `com.backhaushold.openmoji` and `com.backhaushold.openmoji.MessagesExtension`, each with **App Groups** (`group.com.backhaushold.openmoji`). Keychain sharing needs no portal capability; it is the `keychain-access-groups` entitlement under the team prefix.
 2. Create App Store distribution profiles **"OpenMoji App Store"** and **"OpenMoji Messages App Store"** and install them.
 3. Import the Apple Distribution certificate into `~/Library/Keychains/openmoji-signing.keychain-db`: create the keychain, turn off auto-lock, `security import -T /usr/bin/codesign`, then `set-key-partition-list -S apple-tool:,apple:,codesign:`. Store its password in 1Password.
-4. Create the App Store Connect app record (name: open question), iPad only, and an internal testing group "Family" with **automatic distribution** on. Add family members as App Store Connect users.
+4. Create the App Store Connect app record (name: "OpenMoji Family"), iPad only, and an internal testing group "Family" with **automatic distribution** on. Add family members as App Store Connect users.
 5. Create one App Store Connect API key (App Manager role) and store it in 1Password `op://OpenMoji/testflight-asc-api-key/{issuer-id,key-id,private-key-base64}`. It is never added to GitHub.
 
 ### 12.3 `make testflight` sequence (`scripts/release.sh` via `scripts/op-run.sh`)
