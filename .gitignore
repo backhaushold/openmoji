@@ -9,3 +9,6 @@
 # SwiftPM
 .build/
 .swiftpm/
+
+# XcodeGen (project.yml is the source of truth, ADR-0001)
+*.xcodeproj/
