@@ -25,7 +25,7 @@ Resolved items stay listed so the history is visible. "Blocks" names the earlies
 | OQ-9 | Real cost and latency per attempt (replaces NFR-8's unverified "< $0.05") | M1 | Measure from `usage` and wall-clock over the 20-prompt set at low, medium and high |
 | OQ-10 | Do tap-to-insert and peel-and-drag from `MSStickerView` work in both compact and expanded on iPadOS 26, and does a long-press context menu conflict with peel? | M3 | Verify in the shell build; fallbacks in [ADR-0008](adr/0008-swiftui-with-msstickerview.md) |
 | OQ-11 | Does `MSSticker` accept file URLs inside the App Group container? | M3 | Expected yes; fallback is copying to a temp file (tech spec A5) |
-| OQ-12 | Lowest App Store Connect API key role that can read builds, for the GitHub-held expiry key | M3 | Try "Developer"; fall back to "App Manager" and accept the wider scope, or drop the GitHub secret and run the check locally |
+| OQ-12 | ~~Lowest App Store Connect API key role for a GitHub-held expiry key~~ | — | **Moot** 2026-10-02: no secrets in GitHub; the CI expiry alert works from tag dates (tech spec §12.6) |
 | OQ-13 | Can the internal group "Family" use automatic distribution, so REL-5 needs no API write? | M3 | Expected yes; `asc.swift ensure-in-group` covers it otherwise |
-| OQ-14 | Alert on the yearly expiry of the distribution certificate and profiles too? | M5 | Proposal: extend the expiry workflow to read profile expiry via the ASC API |
-| OQ-15 | Correct the PRD: GPT Image 2 isn't deprecated; NFR-8's cost is unverified; Apple's 300–618 px is guidance | M2 | Edit the PRD text; no locked decision changes |
+| OQ-14 | Alert on the yearly expiry of the distribution certificate and profiles too? | M5 | Proposal: `make testflight-status` also reports profile and certificate expiry (local, via the ASC API); CI can't see them without secrets |
+| OQ-15 | Correct the PRD: GPT Image 2 isn't deprecated; NFR-8's cost is unverified; Apple's 300–618 px is guidance | — | **Resolved** 2026-10-02: PRD updated, also OQ-2 and OQ-3 resolved, REL-4 and REL-9 made local-only |

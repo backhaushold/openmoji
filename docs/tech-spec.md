@@ -5,7 +5,7 @@
 - **Source of truth for scope:** [OpenMoji PRD](https://claude.ai/code/artifact/4eb3c358-d044-4b4f-a48b-2aca31cd3bbe) (locked decisions D1–D10, FR-1–24, NFR-1–10, REL-1–9)
 - **Decisions:** [docs/adr/](adr/) · **Open questions:** [docs/open-questions.md](open-questions.md)
 
-OpenMoji is an iPad-only iMessage app extension that turns a text prompt into an emoji-style sticker. It calls the OpenAI Images API directly from the device, processes the result into a Messages-compliant PNG, and keeps a per-device library. The repo produces two targets: a minimal shell app and the Messages extension. Releases go to TestFlight internal testers through a local, one-command lane that is reimplemented for OpenMoji using Sagelet's lane as a reference.
+OpenMoji is an iPad-only iMessage app extension that turns a text prompt into an emoji-style sticker. It calls the OpenAI Images API directly from the device, processes the result into a Messages-compliant PNG, and keeps a per-device library. The repo produces two targets: a minimal shell app and the Messages extension. Releases go to TestFlight internal testers through a local, one-command lane that is reimplemented for OpenMoji using Sagelet's lane as a reference. **Nothing publishes from CI, and no secrets are stored in GitHub.**
 
 ---
 
@@ -418,7 +418,7 @@ OpenMoji's lane is **written from scratch for this repo**. Sagelet (`backhaushol
 | Entry point | `make testflight` on the owner's Mac | Same shape: `make testflight` (REL-1) |
 | Secrets | 1Password via `op run --env-file` | Same model (REL-2), own vault `OpenMoji` and own `release/.env.example` |
 | Signing | Manual, Apple Distribution cert in a dedicated, non-auto-locking keychain | Same approach, own `openmoji-signing.keychain-db`; **per-target profiles** (Sagelet's single global profile override would break the extension) |
-| ASC auth | ASC API key (.p8 base64 in 1Password), used for export/upload | Same (REL-4 — key-based, never an Apple ID session); also stored as a GitHub secret for the expiry check (12.6) |
+| ASC auth | ASC API key (.p8 base64 in 1Password), used for export/upload | Same (REL-4): held in 1Password, used only by the local lane; never a GitHub secret or an Apple ID session |
 | Build number | `git rev-list --count HEAD` | Same (REL-3) plus a preflight that requires HEAD == `origin/main` so the count is monotonic |
 | Upload | `xcodebuild -exportArchive`, `destination=upload` | Same |
 | Tests before upload | None | `swift test` for OpenMojiCore (REL-7) |
@@ -426,7 +426,7 @@ OpenMoji's lane is **written from scratch for this repo**. Sagelet (`backhaushol
 | Secret scan | None | gitleaks in CI and in the lane (REL-6) |
 | Tester distribution | Manual in ASC | Internal group "Family" auto-distribution, verified by API (REL-5) |
 | Release notes | None | "What to Test" from `git log` since the last `build-*` tag (REL-8) |
-| Expiry | None | Scheduled GitHub Actions check that opens an issue at ≤ 14 days (REL-9) |
+| Expiry | None | Secret-free scheduled GitHub Actions check on the newest `build-*` tag's date opens an issue at ≤ 14 days; `make testflight-status` reads the exact date locally (REL-9) |
 | Known pitfalls to design for | Homebrew `rsync` breaks CreateIPA; login keychain → `errSecInternalComponent` in non-interactive sessions; `xcode-select` must point at full Xcode | Lane puts `/usr/bin` first on `PATH`, uses the dedicated keychain, preflights `xcode-select -p` |
 
 ### 12.2 One-time setup (runbook, `docs/runbooks/testflight-release.md`, written in M3)
@@ -435,7 +435,7 @@ OpenMoji's lane is **written from scratch for this repo**. Sagelet (`backhaushol
 2. Create App Store distribution profiles **"OpenMoji App Store"** and **"OpenMoji Messages App Store"** and install them.
 3. Import the Apple Distribution certificate into `~/Library/Keychains/openmoji-signing.keychain-db`: create the keychain, turn off auto-lock, `security import -T /usr/bin/codesign`, then `set-key-partition-list -S apple-tool:,apple:,codesign:`. Store its password in 1Password.
 4. Create the App Store Connect app record (name: open question), iPad only, and an internal testing group "Family" with **automatic distribution** on. Add family members as App Store Connect users.
-5. Create the App Store Connect API keys (12.6), store them in 1Password `op://OpenMoji/…`, and add the read-only expiry key as GitHub Actions secrets.
+5. Create one App Store Connect API key (App Manager role) and store it in 1Password `op://OpenMoji/testflight-asc-api-key/{issuer-id,key-id,private-key-base64}`. It is never added to GitHub.
 
 ### 12.3 `make testflight` sequence (`scripts/release.sh` via `scripts/op-run.sh`)
 
@@ -459,7 +459,8 @@ OpenMoji's lane is **written from scratch for this repo**. Sagelet (`backhaushol
  8. Post-upload    scripts/asc.swift wait-for-build $BUILD_NUMBER   (poll until processingState = VALID)
                    scripts/asc.swift set-whats-new $BUILD_NUMBER "$(git log build-<prev>..HEAD --format='- %s')"   (REL-8)
                    scripts/asc.swift ensure-in-group $BUILD_NUMBER "Family"   (REL-5; no-op if auto-distributed)
- 9. Tag            git tag build-$BUILD_NUMBER && git push origin build-$BUILD_NUMBER
+ 9. Tag            git tag -a build-$BUILD_NUMBER -m "TestFlight upload $(date -u +%FT%TZ)"
+                   git push origin build-$BUILD_NUMBER    (the annotated tag's date is the upload date that 12.6's expiry check reads)
 ```
 
 Archives are kept under `build/release/OpenMoji-<N>.xcarchive` for dSYMs. Steps 1–4 fail before anything is signed.
@@ -502,7 +503,9 @@ Debug stays on automatic signing for running on the iPad from Xcode.
 
 ### 12.6 CI and expiry automation (GitHub Actions)
 
-- **`ci.yml`**: on `pull_request` and `push` to `main`, `macos-latest`, `setup-xcode` latest-stable.
+GitHub Actions only verifies and alerts. It never signs or uploads, and the repo holds **no Actions secrets**. Workflows use only the built-in, per-run `GITHUB_TOKEN`, with least-privilege `permissions`.
+
+- **`ci.yml`**: on `pull_request` and `push` to `main`, `macos-latest`, `setup-xcode` latest-stable, `permissions: contents: read`.
   1. gitleaks (REL-6).
   2. SwiftFormat and SwiftLint lint.
   3. `swift test` (OpenMojiCore).
@@ -510,11 +513,14 @@ Debug stays on automatic signing for running on the iPad from Xcode.
   5. `xcodebuild test` for `OpenMojiMessagesTests` on an iPad simulator with `CODE_SIGNING_ALLOWED=NO`.
 
   DerivedData cache keyed on `project.yml` and `**/*.swift`. A `paths-ignore` for docs-only changes is **not** used, because the lane's preflight needs a check run on every `main` commit. Instead a cheap docs-only fast path skips steps 4–5.
-- **`testflight-expiry.yml`** (REL-9, alert option): `schedule: cron "0 14 * * *"` plus `workflow_dispatch`, `macos-latest` (the repo is public, so minutes are free).
-  1. `scripts/asc.swift latest-build` reads the newest VALID build's `expirationDate`.
-  2. If it's ≤ 14 days away and no open issue has the label `testflight-expiry`, it opens one: "TestFlight build N expires on <date>; run `make testflight`".
-  3. Secrets: `ASC_EXPIRY_KEY_ID`, `ASC_ISSUER_ID`, `ASC_EXPIRY_KEY_P8_BASE64`, for a separate ASC API key with the lowest role that can read builds (open question). `permissions: issues: write`.
-- **`scripts/asc.swift`** ([ADR-0015](adr/0015-app-store-connect-api-tooling.md)): a single-file Swift script that signs the ES256 JWT with CryptoKit and calls `GET /v1/builds`, `POST/PATCH /v1/betaBuildLocalizations` (`whatsNew`) and `POST /v1/builds/{id}/relationships/betaGroups`. No Ruby, Python or third-party dependencies.
+- **`testflight-expiry.yml`** (REL-9, alert only): `schedule: cron "0 14 * * *"` plus `workflow_dispatch` (input `threshold_days`, default 14), `ubuntu-latest`, `permissions: contents: read, issues: write`.
+  1. Check out with tags and find the newest `build-*` tag by `creatordate`. The lane creates it as an annotated tag at upload (§12.3 step 9), so its date is the upload date.
+  2. Expiry ≈ tag date + 90 days. TestFlight counts from upload; processing adds minutes, which is negligible against a 14-day threshold.
+  3. If expiry is ≤ `threshold_days` away and no open issue has the label `testflight-expiry`, open one: "TestFlight build N expires about <date>; run `make testflight` on the release Mac". With no `build-*` tag yet, do nothing.
+  4. No App Store Connect access and no stored secrets.
+- **`make testflight-status`** (local): `scripts/asc.swift latest-build` reads the newest VALID build's exact `expirationDate` and processing state with the 1Password-held key. Use it to confirm an alert or after an expired or rejected build.
+- **Limitation, accepted:** the tag-based check can't see builds uploaded outside the lane or builds that failed processing after the tag was pushed. The lane is the only upload path, and step 8 waits for VALID before step 9 tags, so both cases come down to a failed lane run, which is visible at the time.
+- **`scripts/asc.swift`** ([ADR-0015](adr/0015-app-store-connect-api-tooling.md)): a single-file Swift script that signs the ES256 JWT with CryptoKit and calls `GET /v1/builds`, `POST/PATCH /v1/betaBuildLocalizations` (`whatsNew`) and `POST /v1/builds/{id}/relationships/betaGroups`. No Ruby, Python or third-party dependencies. Runs **only on the release Mac**.
 
 ---
 
@@ -559,12 +565,12 @@ Debug stays on automatic signing for running on the iPad from Xcode.
 | REL-1 | `make testflight` (§12.3) | Acceptance criterion "one pipeline run" |
 | REL-2 | Sagelet-pattern lane, reimplemented (§12.1), ADR-0010 | Review against §12.1 table |
 | REL-3 | `git rev-list --count` + main-only preflight (§12.3) | Lane preflight |
-| REL-4 | ASC API key from 1Password / GitHub secret (§12.3, §12.6) | Lane run |
+| REL-4 | ASC API key from 1Password, local lane only (§12.3) | Lane run; repo has no Actions secrets (`gh secret list` empty) |
 | REL-5 | "Family" group auto-distribution + `ensure-in-group` (§12.3) | Lane run |
 | REL-6 | gitleaks in CI and lane (§12), ADR-0012 | Seeded-secret test on a throwaway branch |
 | REL-7 | `swift test` in lane step 4 (§12.3) | Lane run |
 | REL-8 | `set-whats-new` from `git log` (§12.3) | Build visible in TestFlight with notes |
-| REL-9 | `testflight-expiry.yml` alert (§12.6) | `workflow_dispatch` dry run with threshold override |
+| REL-9 | Secret-free `testflight-expiry.yml` alert from tag dates; `make testflight-status` (§12.6) | `workflow_dispatch` dry run with threshold override |
 
 ---
 
