@@ -1,0 +1,5 @@
+# SwiftFormat (CI runs `swiftformat --lint .`); defaults plus the Swift version.
+--swiftversion 6.4
+
+# Would rewrite @Test function names into backticked raw identifiers.
+--disable swiftTestingTestCaseNames

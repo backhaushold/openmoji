@@ -1,0 +1,8 @@
+# SwiftLint (CI runs `swiftlint lint --strict`); defaults, minus the rule that
+# contradicts SwiftFormat, which owns formatting and keeps trailing commas.
+disabled_rules:
+  - trailing_comma
+
+excluded:
+  - "**/.build"
+  - "**/DerivedData"

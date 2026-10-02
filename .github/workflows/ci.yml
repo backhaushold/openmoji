@@ -1,0 +1,129 @@
+# Tech spec 12.6, ADR-0012. CI only verifies: it never signs or uploads, and the
+# repo has no Actions secrets (only the per-run GITHUB_TOKEN, read-only).
+#
+# No `paths-ignore`: the release lane's preflight needs a check run on every
+# main commit. Docs-only changes take a fast path that skips steps 4-5
+# (xcodegen and the simulator tests) but still produce the `verify` check run.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Cancel superseded PR runs; never cancel (or collapse) runs for main commits.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    name: verify
+    # Package.swift is swift-tools-version 6.4, which needs Xcode 27. The
+    # `macos-latest` label is macOS 26 with Xcode 26.x (Swift 6.3 at most), so
+    # use the `xcode-27` image (macOS 27, Xcode 27.0 default; public preview).
+    # Switch back to `macos-latest` once its default image ships Xcode 27.
+    runs-on: xcode-27
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash # explicit shell enables `-eo pipefail`
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      HOMEBREW_NO_ENV_HINTS: "1"
+      # The owner's device is an iPad Air; this simulator ships with the image.
+      DESTINATION: platform=iOS Simulator,name=iPad Air 11-inch (M4)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans the full history
+          persist-credentials: false
+
+      - name: Detect docs-only change
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          # PR: checkout is the merge commit, so HEAD^1 is the base tip.
+          # Push to main: compare with the previous tip.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="HEAD^1"
+          else
+            base="$BEFORE_SHA"
+          fi
+          docs_only=false
+          if git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            changed="$(git diff --name-only "$base" HEAD)"
+            echo "Changed files:"
+            echo "$changed"
+            # Docs-only = every changed file is a Markdown file or under docs/.
+            if [ -n "$changed" ] && ! grep -qvE '^docs/|\.md$' <<<"$changed"; then
+              docs_only=true
+            fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "docs_only=$docs_only"
+
+      # Outside the workspace, so linters never see it.
+      - name: Set DerivedData path
+        run: echo "DERIVED_DATA=$RUNNER_TEMP/DerivedData" >> "$GITHUB_ENV"
+
+      - name: Install tools
+        run: brew install gitleaks swiftlint
+
+      # 1. Secret scan (REL-6) over the full history; findings are redacted.
+      - name: gitleaks
+        run: gitleaks detect --redact --verbose --no-banner
+
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      # Restored before `swift test` so hashFiles does not see Packages/**/.build.
+      - name: Restore DerivedData cache
+        if: steps.scope.outputs.docs_only != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.DERIVED_DATA }}
+          key: deriveddata-${{ runner.os }}-${{ hashFiles('project.yml', '**/*.swift') }}
+          restore-keys: |
+            deriveddata-${{ runner.os }}-
+
+      # 2. Lint (SwiftFormat is preinstalled on the runner image).
+      - name: SwiftFormat lint
+        run: swiftformat --lint .
+
+      - name: SwiftLint
+        run: swiftlint lint --strict
+
+      # 3. OpenMojiCore unit tests on the Mac host.
+      - name: swift test (OpenMojiCore)
+        run: swift test --package-path Packages/OpenMojiCore
+
+      # 4-5. Skipped for docs-only changes.
+      - name: xcodegen generate
+        if: steps.scope.outputs.docs_only != 'true'
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: xcodebuild test (OpenMojiMessagesTests)
+        if: steps.scope.outputs.docs_only != 'true'
+        run: |
+          xcodebuild test \
+            -project OpenMoji.xcodeproj \
+            -scheme OpenMojiMessagesTests \
+            -destination "$DESTINATION" \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify --renderer github-actions
