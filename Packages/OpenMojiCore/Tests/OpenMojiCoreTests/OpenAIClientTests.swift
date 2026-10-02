@@ -8,7 +8,8 @@ private let cannedPNGBase64 =
 
 /// `OpenAIClient` against a `URLProtocol` stub: the §5.1 request, the §5.2
 /// response, the §5.3 behaviour and the routing into `ErrorMapper` (§6).
-/// Serialized because the stub's state is process-wide.
+/// Each test gets a fresh instance of this struct, so `stub` is that test's own
+/// stub state: a request that lands late from another test never touches it.
 @Suite(.serialized) struct OpenAIClientTests {
     // A fake key on purpose: it must not look like `sk-...` (secret scanners,
     // and the hygiene tests that assert no `sk-` leaks).
@@ -16,8 +17,11 @@ private let cannedPNGBase64 =
 
     private let defaultConfig = GenerationConfig(infoDictionary: [:])
 
+    /// This test's stub. Internal so `OpenAIClientValidationTests.swift` can use it.
+    let stub = StubURLProtocol.Stub()
+
     private func makeClient(_ config: GenerationConfig? = nil) -> OpenAIClient {
-        OpenAIClient(config: config ?? defaultConfig, protocolClasses: [StubURLProtocol.self])
+        stub.makeClient(config: config ?? defaultConfig)
     }
 
     private func successBody(_ fields: [String: Any]? = nil) -> Data {
@@ -48,7 +52,7 @@ private let cannedPNGBase64 =
 
     /// The single request the stub saw, with its JSON body decoded.
     private func onlyRecorded() throws -> (request: URLRequest, json: [String: Any]) {
-        let recorded = StubURLProtocol.recorded
+        let recorded = stub.recorded
         try #require(recorded.count == 1)
         let body = try #require(recorded[0].body)
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -58,7 +62,7 @@ private let cannedPNGBase64 =
     // MARK: Request (§5.1)
 
     @Test func postsToTheImagesGenerationsEndpoint() async throws {
-        StubURLProtocol.reset(.respond(status: 200, body: successBody()))
+        stub.reset(.respond(status: 200, body: successBody()))
         _ = try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
 
         let (request, _) = try onlyRecorded()
@@ -67,7 +71,7 @@ private let cannedPNGBase64 =
     }
 
     @Test func setsAuthorizationAndContentTypeHeaders() async throws {
-        StubURLProtocol.reset(.respond(status: 200, body: successBody()))
+        stub.reset(.respond(status: 200, body: successBody()))
         _ = try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
 
         let (request, _) = try onlyRecorded()
@@ -76,7 +80,7 @@ private let cannedPNGBase64 =
     }
 
     @Test func sendsEveryBodyFieldFromSection51AndNothingElse() async throws {
-        StubURLProtocol.reset(.respond(status: 200, body: successBody()))
+        stub.reset(.respond(status: 200, body: successBody()))
         _ = try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
 
         let (_, json) = try onlyRecorded()
@@ -95,7 +99,7 @@ private let cannedPNGBase64 =
     }
 
     @Test func takesModelAndQualityFromGenerationConfig() async throws {
-        StubURLProtocol.reset(.respond(status: 200, body: successBody()))
+        stub.reset(.respond(status: 200, body: successBody()))
         let config = GenerationConfig(infoDictionary: [
             "OpenMojiImageModel": "gpt-image-test-model",
             "OpenMojiImageQuality": "high",
@@ -108,7 +112,7 @@ private let cannedPNGBase64 =
     }
 
     @Test func encodesPromptWithQuotesNewlinesAndUnicode() async throws {
-        StubURLProtocol.reset(.respond(status: 200, body: successBody()))
+        stub.reset(.respond(status: 200, body: successBody()))
         let prompt = "a \"quoted\" cat\nwith a \\ backslash \u{1F431}"
         _ = try await makeClient().generate(prompt: prompt, apiKey: apiKey)
 
@@ -127,7 +131,7 @@ private let cannedPNGBase64 =
     }
 
     @Test func requestCarries90SecondTimeout() async throws {
-        StubURLProtocol.reset(.respond(status: 200, body: successBody()))
+        stub.reset(.respond(status: 200, body: successBody()))
         _ = try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
 
         let (request, _) = try onlyRecorded()
@@ -137,7 +141,7 @@ private let cannedPNGBase64 =
     // MARK: Response (§5.2)
 
     @Test func decodesSuccessIntoPNGData() async throws {
-        StubURLProtocol.reset(.respond(status: 200, body: successBody()))
+        stub.reset(.respond(status: 200, body: successBody()))
         let data = try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
 
         #expect(data == Data(base64Encoded: cannedPNGBase64))
@@ -154,7 +158,7 @@ private let cannedPNGBase64 =
     func usageIsOptional(label: String, usage: String?) async throws {
         let usageField = usage.map { #", "usage": \#($0)"# } ?? ""
         let body = Data(#"{"data": [{"b64_json": "\#(cannedPNGBase64)"}]\#(usageField)}"#.utf8)
-        StubURLProtocol.reset(.respond(status: 200, body: body))
+        stub.reset(.respond(status: 200, body: body))
         let data = try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
         #expect(data == Data(base64Encoded: cannedPNGBase64), "\(label)")
     }
@@ -164,7 +168,7 @@ private let cannedPNGBase64 =
             "revised_prompt": "ignored",
             "data": [["b64_json": cannedPNGBase64, "revised_prompt": "x"], ["b64_json": "AAAA"]],
         ]
-        StubURLProtocol.reset(.respond(status: 200, body: successBody(fields)))
+        stub.reset(.respond(status: 200, body: successBody(fields)))
         let data = try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
         #expect(data == Data(base64Encoded: cannedPNGBase64))
     }
@@ -182,7 +186,7 @@ private let cannedPNGBase64 =
         ("empty body", Data()),
     ])
     func undecodableSuccessIsProcessingFailed(label: String, body: Data) async {
-        StubURLProtocol.reset(.respond(status: 200, body: body))
+        stub.reset(.respond(status: 200, body: body))
         await #expect(throws: GenerationError.processingFailed, "\(label)") {
             try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
         }
@@ -205,7 +209,7 @@ private let cannedPNGBase64 =
         status: Int, headers: [String: String], code: String?, type: String?
     ) async {
         let body = errorBody(message: "the api message", type: type, code: code)
-        StubURLProtocol.reset(.respond(status: status, headers: headers, body: body))
+        stub.reset(.respond(status: status, headers: headers, body: body))
 
         let expected = ErrorMapper.map(status: status, headers: headers, body: body)
         await #expect(throws: expected) {
@@ -214,32 +218,32 @@ private let cannedPNGBase64 =
     }
 
     @Test func mapsSpecificStatusesToTheirGenerationErrors() async {
-        StubURLProtocol.reset(.respond(status: 401, body: errorBody(code: "invalid_api_key")))
+        stub.reset(.respond(status: 401, body: errorBody(code: "invalid_api_key")))
         await #expect(throws: GenerationError.invalidKey) {
             try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
         }
 
         // Retry-After reaches the mapper through the response headers.
-        StubURLProtocol.reset(.respond(
+        stub.reset(.respond(
             status: 429, headers: ["Retry-After": "7"], body: errorBody(code: "rate_limit_exceeded")
         ))
         await #expect(throws: GenerationError.rateLimited(retryAfter: 7)) {
             try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
         }
 
-        StubURLProtocol.reset(.respond(status: 400, body: errorBody(code: "moderation_blocked")))
+        stub.reset(.respond(status: 400, body: errorBody(code: "moderation_blocked")))
         await #expect(throws: GenerationError.contentRefused) {
             try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
         }
 
-        StubURLProtocol.reset(.respond(status: 403, body: errorBody(message: "no images scope")))
+        stub.reset(.respond(status: 403, body: errorBody(message: "no images scope")))
         await #expect(throws: GenerationError.keyNotPermitted(apiMessage: "no images scope")) {
             try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
         }
     }
 
     @Test func nonJSONErrorBodyStillMapsByStatus() async {
-        StubURLProtocol.reset(.respond(status: 502, body: Data("<html>bad gateway</html>".utf8)))
+        stub.reset(.respond(status: 502, body: Data("<html>bad gateway</html>".utf8)))
         await #expect(throws: GenerationError.serviceUnavailable) {
             try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
         }
@@ -252,7 +256,7 @@ private let cannedPNGBase64 =
         (.cannotConnectToHost, .serviceUnavailable),
     ])
     func transportErrorsAreRoutedThroughErrorMapper(code: URLError.Code, expected: GenerationError) async {
-        StubURLProtocol.reset(.fail(code))
+        stub.reset(.fail(code))
         await #expect(throws: expected) {
             try await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
         }
@@ -268,33 +272,33 @@ private let cannedPNGBase64 =
         .fail(.networkConnectionLost),
     ])
     func failureIsNeverRetried(behavior: StubURLProtocol.Behavior) async {
-        StubURLProtocol.reset(behavior)
+        stub.reset(behavior)
         _ = try? await makeClient().generate(prompt: "a happy cat", apiKey: apiKey)
-        #expect(StubURLProtocol.recorded.count == 1)
+        #expect(stub.recorded.count == 1)
     }
 
     // MARK: Cancellation (§5.3)
 
     @Test func cancellingTheTaskCancelsTheRequest() async throws {
-        StubURLProtocol.reset(.hang)
+        stub.reset(.hang)
         let client = makeClient()
         let key = apiKey
         let task = Task { try await client.generate(prompt: "a happy cat", apiKey: key) }
 
         // Wait until the request is actually in flight.
-        try await waitUntil { StubURLProtocol.recorded.count == 1 }
-        #expect(StubURLProtocol.stopLoadingCount == 0)
+        try await waitUntil { stub.recorded.count == 1 }
+        #expect(stub.stopLoadingCount == 0)
 
         task.cancel()
 
         await #expect(throws: GenerationError.cancelled) { try await task.value }
         // The data task was cancelled, not abandoned: the protocol was stopped.
-        try await waitUntil { StubURLProtocol.stopLoadingCount >= 1 }
-        #expect(StubURLProtocol.recorded.count == 1)
+        try await waitUntil { stub.stopLoadingCount >= 1 }
+        #expect(stub.recorded.count == 1)
     }
 
-    @Test func aTaskCancelledBeforeStartingThrowsCancelled() async throws {
-        StubURLProtocol.reset(.respond(status: 200, body: successBody()))
+    @Test func aTaskCancelledBeforeStartingThrowsCancelled() async {
+        stub.reset(.respond(status: 200, body: successBody()))
         let client = makeClient()
         let key = apiKey
         let task = Task {
@@ -302,13 +306,9 @@ private let cannedPNGBase64 =
             withUnsafeCurrentTask { $0?.cancel() }
             return try await client.generate(prompt: "a happy cat", apiKey: key)
         }
+        // URLSession may still start the cancelled load after this returns. It
+        // lands in this test's own stub, so it can't reach another test.
         await #expect(throws: GenerationError.cancelled) { try await task.value }
-
-        // `generate` has already thrown, but URLSession still starts the
-        // cancelled load on its own queue and the stub records it a moment
-        // later. Drain it (the protocol is stopped right after it starts) so
-        // it can't land in the next test's `reset`ed state.
-        try await waitUntil { StubURLProtocol.stopLoadingCount >= 1 }
     }
 
     // MARK: Helpers
