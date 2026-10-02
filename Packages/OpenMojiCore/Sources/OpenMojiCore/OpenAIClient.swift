@@ -22,7 +22,8 @@ public actor OpenAIClient {
 
     /// Internal so tests can read the timeouts and cache settings it was built with.
     nonisolated let session: URLSession
-    private let config: GenerationConfig
+    /// Internal so `validate(key:)` (OpenAIClient+Validation.swift) can read the model ID.
+    let config: GenerationConfig
 
     public init(config: GenerationConfig = GenerationConfig()) {
         self.init(config: config, protocolClasses: nil)
