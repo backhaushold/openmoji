@@ -154,8 +154,18 @@ Renaming a profile means editing both.
 Install each downloaded `.mobileprovision` by opening it (double-click, or
 `open <file>`). Current Xcode stores installed profiles in
 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/` (older Xcode used
-`~/Library/MobileDevice/Provisioning Profiles/`). Confirm both are installed
-and read their expiry dates:
+`~/Library/MobileDevice/Provisioning Profiles/`). `open` can return without
+installing anything (seen 2026-10-03); if the loop below doesn't list them,
+copy each file in under its UUID, which is what Xcode does:
+
+```bash
+D="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+for f in ~/Downloads/OpenMoji_App_Store.mobileprovision ~/Downloads/OpenMoji_Messages_App_Store.mobileprovision; do
+  cp -f "$f" "$D/$(security cms -D -i "$f" | plutil -extract UUID raw -o - -).mobileprovision"
+done
+```
+
+Confirm both are installed and read their expiry dates:
 
 ```bash
 for p in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"/*.mobileprovision; do
@@ -200,8 +210,13 @@ KC_PW_REF="op://OpenMoji/openmoji-signing-keychain/password"
    acceptable for a one-time step on a single-user Mac. Omit `-p ...` to be
    prompted instead.
 
+   Read the password into a variable and check it is non-empty first. If the
+   1Password approval prompt times out, `op read` prints nothing and
+   `create-keychain -p ""` happily makes a keychain with an **empty** password
+   (happened 2026-10-03). Every `-p`/`-k` below uses the same guard.
+
    ```bash
-   security create-keychain -p "$(op read "$KC_PW_REF")" "$KC"
+   PW="$(op read "$KC_PW_REF")" && [ -n "$PW" ] && security create-keychain -p "$PW" "$KC"
    ```
 
 3. **Turn off auto-lock.** Passing neither `-t <seconds>` (timeout) nor `-l`
@@ -209,9 +224,13 @@ KC_PW_REF="op://OpenMoji/openmoji-signing-keychain/password"
 
    ```bash
    security set-keychain-settings "$KC"
-   security unlock-keychain -p "$(op read "$KC_PW_REF")" "$KC"
+   security unlock-keychain -p "$PW" "$KC"
    security show-keychain-info "$KC"      # should report no-timeout
    ```
+
+   If you suspect an empty password, `security lock-keychain "$KC" &&
+   security unlock-keychain -p "" "$KC"` must **fail**; if it succeeds,
+   `security delete-keychain "$KC"` and start again from step 2.
 
 4. **Export the Apple Distribution identity as a `.p12`.** Use Keychain Access
    rather than `security export`: Keychain Access, the keychain that holds the
@@ -219,6 +238,12 @@ KC_PW_REF="op://OpenMoji/openmoji-signing-keychain/password"
    **Export...**, format **Personal Information Exchange (.p12)**, save as
    `~/openmoji-dist.p12`, choose a throwaway export password. (`security export
    -t identities` exports **every** identity in a keychain, not just this one.)
+
+   Alternative (used 2026-10-03): copy the identity (certificate and its
+   private key) into the signing keychain directly in Keychain Access, then
+   skip the `security import` line in step 5 and step 6, but **still run
+   `set-key-partition-list`**: a key copied in the UI is not usable by
+   `codesign` unattended until it is set.
 
 5. **Import it with `codesign` authorised**, then **set the partition list**.
    Both are needed: `-T` adds `/usr/bin/codesign` to the key's access list and
@@ -229,7 +254,7 @@ KC_PW_REF="op://OpenMoji/openmoji-signing-keychain/password"
    ```bash
    security import ~/openmoji-dist.p12 -k "$KC" -T /usr/bin/codesign
    security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
-     -k "$(op read "$KC_PW_REF")" "$KC"
+     -k "$PW" "$KC" >/dev/null
    ```
 
    (`-s` limits the change to keys that can sign. `-k` is marked deprecated in
@@ -249,10 +274,11 @@ KC_PW_REF="op://OpenMoji/openmoji-signing-keychain/password"
    ```bash
    security find-identity -v -p codesigning "$KC"        # 1 valid identity, Apple Distribution
    security lock-keychain "$KC"
-   security unlock-keychain -p "$(op read "$KC_PW_REF")" "$KC"
+   security unlock-keychain -p "$PW" "$KC"
    T=$(mktemp -d) && cp -f /bin/ls "$T/ls-test"
    codesign -f -s "Apple Distribution" --keychain "$KC" "$T/ls-test"
    rm -rf "$T"
+   unset PW
    ```
 
 Record the certificate expiry in the register (section 3):
@@ -314,8 +340,9 @@ Integrations, **Request Access**)
    **Generate API Key**. Name `openmoji-testflight` (a label for you only).
    Access: **App Manager**. Generate. A key's name and access cannot be edited
    afterwards; to change either, revoke and regenerate.
-2. Note the **Issuer ID** (shown at the top of the page) and the **Key ID**
-   (in the key's row), and **Download** the `AuthKey_<KEY_ID>.p8`. Apple lets
+2. Note the **Issuer ID** (a UUID, shown at the top of the page above the keys
+   table) and the **Key ID** (10 characters, in the key's row and in the file
+   name); they are easy to swap. **Download** the `AuthKey_<KEY_ID>.p8`. Apple lets
    you download it **once**; if lost, revoke and generate a new key.
 3. Store all three in 1Password as one item in the `OpenMoji` vault. The `.p8`
    goes in base64-encoded, which avoids newline and whitespace mangling as it
@@ -440,9 +467,9 @@ the same PR as any renewal.**
 
 | Item | Expires (UTC) | Last renewed or created | Notes |
 |---|---|---|---|
-| Apple Distribution certificate, team `AB5S94XWRQ` | 2027-07-22 | _fill in at 2.3_ | Date read from the existing certificate on 2026-10-02; re-read at 2.3 (section 2.3, last command) to confirm it is the one in the signing keychain. If A7 fails and a second certificate is created, add a row |
-| Profile `OpenMoji App Store` | _fill in at 2.2_ | _fill in at 2.2_ | Date from the loop in 2.2 |
-| Profile `OpenMoji Messages App Store` | _fill in at 2.2_ | _fill in at 2.2_ | Date from the loop in 2.2 |
+| Apple Distribution certificate, team `AB5S94XWRQ` | 2027-07-22 01:19:37 | Pre-existing; copied into the signing keychain 2026-10-03 | A7 confirmed 2026-10-03: the team's existing certificate (SHA-1 `541C8977…B15E`) signs OpenMoji; date re-read from the signing keychain. If a second certificate is ever created, add a row |
+| Profile `OpenMoji App Store` | 2027-07-22 01:19:37 | 2026-10-03 | Capped at the certificate's expiry |
+| Profile `OpenMoji Messages App Store` | 2027-07-22 01:19:37 | 2026-10-03 | Capped at the certificate's expiry |
 
 There is no automated alert for these yet (OQ-14, open). Until that is decided,
 put a calendar reminder about 30 days before the earliest date. This is separate
