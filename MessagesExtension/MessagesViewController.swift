@@ -1,3 +1,54 @@
 import Messages
+import OpenMojiCore
+import SwiftUI
 
-final class MessagesViewController: MSMessagesAppViewController {}
+/// Hosts the one SwiftUI root and forwards host lifecycle into `AppModel`
+/// (tech spec §10, ADR-0008).
+final class MessagesViewController: MSMessagesAppViewController {
+    private let model = AppModel(
+        credentials: KeychainCredentialStore(),
+        generator: UnwiredGenerator()
+    )
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        model.presentationStyle = presentationStyle
+
+        let host = UIHostingController(rootView: RootView(model: model))
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        host.didMove(toParent: self)
+    }
+
+    override func willTransition(to presentationStyle: MSMessagesAppPresentationStyle) {
+        super.willTransition(to: presentationStyle)
+        model.presentationStyle = presentationStyle
+    }
+
+    override func didTransition(to presentationStyle: MSMessagesAppPresentationStyle) {
+        super.didTransition(to: presentationStyle)
+        model.presentationStyle = presentationStyle
+    }
+
+    /// An in-flight generation is lost when Messages tears the extension down,
+    /// so stop it here (tech spec §2 Lifecycle).
+    override func willResignActive(with conversation: MSConversation) {
+        super.willResignActive(with: conversation)
+        model.cancel()
+    }
+}
+
+/// Stands in until `GenerationService` (openmoji-1ur) conforms to
+/// `StickerGenerating` and is wired in here. Always fails.
+private struct UnwiredGenerator: StickerGenerating {
+    func generate(prompt: String) async throws(GenerationError) -> ProcessedSticker {
+        throw .serviceUnavailable
+    }
+}
