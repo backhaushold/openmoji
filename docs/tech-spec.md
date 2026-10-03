@@ -26,7 +26,7 @@ OpenMoji is an iPad-only iMessage app extension that turns a text prompt into an
 These do not change any locked decision, but the PRD text should be corrected.
 
 1. **GPT Image 2 is not deprecated.** OpenAI's [deprecations page](https://developers.openai.com/api/docs/deprecations) retires `gpt-image-1-mini`, `gpt-image-1.5` and `chatgpt-image-latest` on 2026-12-01; `gpt-image-2` remains current. Flare stays the default (speed); the model ID stays configurable (FR-9).
-2. **NFR-8 ("under ~$0.05 at medium") is unverified.** OpenAI publishes token prices for GPT Image 2.5 ($5/M text in, $8/M image in, $30/M image out — [pricing](https://developers.openai.com/api/docs/pricing)) but no per-image price. The only static figure is GPT Image 2 at 1024² medium = $0.053. 2.5 adds `xhigh` and `max`, so "medium" may sit lower. M1 measures real cost from the response `usage` field.
+2. **NFR-8 ("under ~$0.05 at medium") is unverified.** OpenAI publishes token prices for GPT Image 2.5 ($5/M text in, $8/M image in, $30/M image out — [pricing](https://developers.openai.com/api/docs/pricing)) but no per-image price. The only static figure is GPT Image 2 at 1024² medium = $0.053. 2.5 adds `xhigh` and `max`, so "medium" may sit lower. M1 measured it from `usage`: $0.0137 mean per attempt at `medium`, p90 latency 11.9 s (OQ-9, resolved; [findings](spikes/m1-findings.md)).
 3. **Apple's 300–618 px range is guidance, not a hard limit, and "square" is not stated.** The [MSSticker initializer](https://developer.apple.com/documentation/messages/mssticker/init(contentsoffileurl:localizeddescription:)) says "must be less than 500 KB" (hard) and "for the best results… 300 x 300 pixels to 618 x 618 pixels" (soft). We still produce square output inside that range.
 
 ### 1.3 Assumptions (explicit)
@@ -211,7 +211,7 @@ Content-Type: application/json
 | `model` | From `GenerationConfig` (Info.plist `OpenMojiImageModel`), default `gpt-image-2.5-flare` | FR-9; the alias, not a dated snapshot (OQ-8, resolved) |
 | `n` | `1` | D3, FR-8 |
 | `size` | `1024x1024` | Smallest standard square. Custom sizes must total ≥ 655,360 px (≈ 810²), so 618 px cannot be requested directly |
-| `quality` | From `GenerationConfig`, default `medium` | FR-9; final default set by M1 (OQ-4) |
+| `quality` | From `GenerationConfig`, default `medium` | FR-9; `medium` ratified after M1 (OQ-4, resolved) |
 | `background` | `transparent` | FR-8, NFR-3; requires `png` or `webp` |
 | `output_format` | `png` | Lossless alpha; avoids a WebP decode path. Revisit in M1 if latency matters (jpeg is documented as fastest but has no alpha) |
 | `moderation` | `auto` (default, sent explicitly) | Family use; `low` not justified |
@@ -561,7 +561,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
 | NFR-5 | ImageIO thumbnail-from-encoded (§7), memory budget (§7.2) | Instruments on iPad Air |
 | NFR-6 | Keychain only; no key in logs or errors (§8); gitleaks (§12) | Secret-hygiene test; gitleaks |
 | NFR-7 | Direct to OpenAI only; no SDKs (ADR-0003); privacy manifest (§3) | `Package.resolved` has no dependencies; review |
-| NFR-8 | Configurable quality (FR-9); measured in M1 (§9) | M1 report |
+| NFR-8 | Configurable quality (FR-9); measured in M1 (§9): $0.0137 per attempt at `medium` | [M1 findings](spikes/m1-findings.md) |
 | NFR-9 | Dynamic Type, VoiceOver labels (§10) | Device checklist with VoiceOver |
 | NFR-10 | Library and send need no network (§8, §10) | Device checklist in airplane mode |
 | REL-1 | `make testflight` (§12.3) | Acceptance criterion "one pipeline run" |
