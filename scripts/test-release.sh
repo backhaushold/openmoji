@@ -10,6 +10,10 @@
 # their calls. "Nothing signed" means: no `security unlock-keychain` and no
 # `xcodebuild archive` / `-exportArchive` in that log.
 #
+# Section (d) covers scripts/op-run.sh (bead openmoji-pxc.3): it runs a copy of
+# the script in a fixture directory with a fake .env and a stub `op`. It never
+# reads the repository's own .env, which may hold a live 1Password token.
+#
 # Secrets in this file are fake and built at runtime, so gitleaks (which scans
 # this repo in CI and in the lane) has nothing to flag.
 #
@@ -159,7 +163,7 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME="Lane Test" GIT_AUTHOR_EMAIL="lane@example.invalid"
 export GIT_COMMITTER_NAME="Lane Test" GIT_COMMITTER_EMAIL="lane@example.invalid"
-unset SIGNING_KEYCHAIN_PASSWORD ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64 SIGNING_KEYCHAIN_PATH
+unset SIGNING_KEYCHAIN_PASSWORD ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64 SIGNING_KEYCHAIN_PATH OP_SERVICE_ACCOUNT_TOKEN
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/openmoji-release-test.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -542,37 +546,342 @@ check "export passes a temporary .p8 path" log_has '-authenticationKeyPath [^ ]*
 check "the signing keychain was unlocked" log_has "^security unlock-keychain -p <redacted> $KEYCHAIN\$"
 check "final message says steps 8-9 are not automated yet" out_has "openmoji-2pq"
 
-# ============================================== the other lane artifacts =====
-group "Makefile, op-run.sh, .env.example, ExportOptions.plist, .gitignore"
+# ================================================================= (d) =======
+group "(d) op-run.sh: service-account token from .env, or interactive 1Password"
+
+# Every case runs a COPY of the real scripts/op-run.sh (and the Makefile) in a
+# fixture directory with its own .env, never the repository's: the real
+# $ROOT/.env, if there is one, holds a live token and is not touched here. `op`
+# is a stub that records its arguments and whether the token was in its
+# environment (never the value). The token below is fake and built at runtime.
+fake_token() { printf 'ops_%s' FAKE_TEST_ONLY_not_a_real_token_0000; }
 
 STUB_BIN="$TMP/stubbin"
-OP_LOG="$TMP/op.log"
 mkdir -p "$STUB_BIN"
-: >"$OP_LOG"
 cat >"$STUB_BIN/op" <<'EOF'
 #!/bin/bash
-printf '%s\n' "$*" >>"$OP_LOG"
-while [ "$1" != "--" ]; do shift; done
-shift
-exec "$@"
+# Test double for the 1Password CLI. Logs to $OP_LOG one line per call with the
+# arguments and whether the token was present and equal to the expected one,
+# never the token itself. OP_MODE=fail makes `op vault get` fail;
+# OP_MODE=fail-echo-token makes it fail while printing the token (a hostile op).
+token=absent
+matches=no
+if [ -n "${OP_SERVICE_ACCOUNT_TOKEN+x}" ]; then token=present; fi
+if [ -n "${EXPECTED_TOKEN:-}" ] && [ "${OP_SERVICE_ACCOUNT_TOKEN:-}" = "$EXPECTED_TOKEN" ]; then matches=yes; fi
+printf 'op: %s | token=%s matches=%s\n' "$*" "$token" "$matches" >>"$OP_LOG"
+printf 'ps: %s\n' "$(ps -o command= -p $$)" >>"$OP_LOG"
+case "$1" in
+  vault)
+    case "${OP_MODE:-ok}" in
+      fail)
+        echo "[ERROR] 2026/01/01 00:00:00 unauthorized: the service account token is not valid" >&2
+        exit 1
+        ;;
+      fail-echo-token)
+        echo "[ERROR] 2026/01/01 00:00:00 invalid token ${OP_SERVICE_ACCOUNT_TOKEN:-none}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  run)
+    while [ "$1" != "--" ]; do shift; done
+    shift
+    exec "$@"
+    ;;
+esac
 EOF
 chmod +x "$STUB_BIN/op"
-RC=0
-OP_LOG="$OP_LOG" PATH="$STUB_BIN:$PATH" "$ROOT/scripts/op-run.sh" /usr/bin/true || RC=$?
-check "op-run.sh: runs the command through op" rc_is 0
-check "op-run.sh: op run --env-file release/.env.example -- <command>" \
-  grep -qxF "run --env-file $ROOT/release/.env.example -- /usr/bin/true" "$OP_LOG"
-STDERR="$TMP/op-run.err"
-RC=0
-env PATH=/usr/bin:/bin "$ROOT/scripts/op-run.sh" /usr/bin/true 2>"$STDERR" || RC=$?
-check "op-run.sh: clear error when op is missing" err_has "1Password CLI"
-check "op-run.sh: missing op exits non-zero" rc_nonzero
-RC=0
-"$ROOT/scripts/op-run.sh" 2>"$STDERR" || RC=$?
-check "op-run.sh: no command prints usage and exits 2" rc_is 2
+
+# A stand-in for scripts/release.sh: records that it ran and what it could see.
+cat >"$STUB_BIN/release-stand-in" <<'EOF'
+#!/bin/bash
+printf 'child: ran args=%s\n' "$*" >>"$OP_LOG"
+if [ -n "${OP_SERVICE_ACCOUNT_TOKEN+x}" ]; then
+  printf 'child: token=present\n' >>"$OP_LOG"
+else
+  printf 'child: token=absent\n' >>"$OP_LOG"
+fi
+if [ -n "${OTHER_VAR+x}" ]; then
+  printf 'child: other_var=present\n' >>"$OP_LOG"
+else
+  printf 'child: other_var=absent\n' >>"$OP_LOG"
+fi
+EOF
+chmod +x "$STUB_BIN/release-stand-in"
+
+OPR="" OP_LOG=""
+oprun_case() { # name: a fixture "repo" holding copies of the real script and Makefile
+  mkdir -p "$TMP/oprun/$1"
+  # Normalised the way op-run.sh derives its own ROOT (TMPDIR may end in a "/").
+  OPR=$(cd "$TMP/oprun/$1" && pwd)
+  mkdir -p "$OPR/scripts" "$OPR/release"
+  cp -f "$ROOT/scripts/op-run.sh" "$OPR/scripts/op-run.sh"
+  cp -f "$ROOT/Makefile" "$OPR/Makefile"
+  cp -f "$ROOT/release/.env.example" "$OPR/release/.env.example"
+  cp -f "$STUB_BIN/release-stand-in" "$OPR/scripts/release.sh"
+}
+write_dotenv() { # mode, line...: the fixture's .env, created owner-only, then chmod'ed
+  local mode="$1"
+  shift
+  (umask 077 && printf '%s\n' "$@" >"$OPR/.env")
+  chmod "$mode" "$OPR/.env"
+}
+valid_dotenv() { write_dotenv "${1:-600}" "# local" "OP_SERVICE_ACCOUNT_TOKEN=$(fake_token)"; }
+
+# run_oprun [VAR=value | -u VAR]... -- command [args...]: runs the command in
+# the current fixture with the stub op first on PATH and no token in the
+# environment, unless an override adds one.
+run_oprun() {
+  OP_LOG="$OPR/op.log"
+  STDOUT="$OPR/stdout"
+  STDERR="$OPR/stderr"
+  : >"$OP_LOG"
+  RC=0
+  (
+    export OP_LOG
+    export EXPECTED_TOKEN
+    EXPECTED_TOKEN=$(fake_token)
+    export PATH="$STUB_BIN:$PATH"
+    unset OP_SERVICE_ACCOUNT_TOKEN OP_MODE OTHER_VAR
+    while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+      if [ "$1" = "-u" ]; then
+        unset "$2"
+        shift 2
+      else
+        export "${1?}"
+        shift
+      fi
+    done
+    shift
+    cd "$OPR"
+    exec "$@"
+  ) >"$STDOUT" 2>"$STDERR" || RC=$?
+}
+
+oplog_has() { grep -qxF -- "$1" "$OP_LOG"; }
+oplog_lacks() { ! grep -qF -- "$1" "$OP_LOG"; }
+token_nowhere() { ! grep -qF -- "$(fake_token)" "$STDOUT" "$STDERR" "$OP_LOG"; }
+op_never_called() { ! grep -q '^op: ' "$OP_LOG"; }
+release_not_run() { oplog_lacks "child: ran"; }
+auth_before_run() {
+  local auth run
+  auth=$(grep -n '^op: vault get OpenMoji ' "$OP_LOG" | sed -n '1s/:.*//p')
+  run=$(grep -n '^op: run ' "$OP_LOG" | sed -n '1s/:.*//p')
+  [ -n "$auth" ] && [ -n "$run" ] && [ "$auth" -lt "$run" ]
+}
+
+# --- .env present: the token reaches op, and only op ---------------------------
+oprun_case dotenv-ok
+write_dotenv 600 "# a comment" "OTHER_VAR=should-not-be-exported" "BAD=\$(touch $OPR/pwned)" "OP_SERVICE_ACCOUNT_TOKEN=$(fake_token)"
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh one two
+check ".env present: exits 0" rc_is 0
+check ".env present: auth check ran with the token in op's environment" oplog_has "op: vault get OpenMoji | token=present matches=yes"
+check ".env present: op run ran with the same token in its environment" \
+  oplog_has "op: run --env-file $OPR/release/.env.example -- /usr/bin/env -u OP_SERVICE_ACCOUNT_TOKEN scripts/release.sh one two | token=present matches=yes"
+check ".env present: the auth check came before op run" auth_before_run
+check ".env present: the release script ran, with its arguments" oplog_has "child: ran args=one two"
+check ".env present: the release script does not inherit the token" oplog_has "child: token=absent"
+check ".env present: says it is using the service account from .env" err_has "service account (token from .env)"
+check ".env present: the token appears in no output, log or op argv" token_nowhere
+check ".env present: other lines are not exported" oplog_has "child: other_var=absent"
+check ".env present: the file is not evaluated as shell code" test ! -e "$OPR/pwned"
+
+oprun_case dotenv-xtrace
+valid_dotenv
+run_oprun -- /bin/bash -x "$OPR/scripts/op-run.sh" scripts/release.sh
+check "bash -x: still runs the release script" oplog_has "child: ran args="
+check "bash -x: the token appears in no output, log or op argv" token_nowhere
+
+oprun_case dotenv-double-quoted
+write_dotenv 600 "OP_SERVICE_ACCOUNT_TOKEN=\"$(fake_token)\""
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "double-quoted value: quotes are stripped" oplog_has "op: vault get OpenMoji | token=present matches=yes"
+
+oprun_case dotenv-single-quoted
+write_dotenv 600 "OP_SERVICE_ACCOUNT_TOKEN='$(fake_token)'"
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "single-quoted value: quotes are stripped" oplog_has "op: vault get OpenMoji | token=present matches=yes"
+
+oprun_case dotenv-crlf
+(umask 077 && printf 'OP_SERVICE_ACCOUNT_TOKEN=%s\r\n' "$(fake_token)" >"$OPR/.env")
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "CRLF line ending: the carriage return is not part of the token" oplog_has "op: vault get OpenMoji | token=present matches=yes"
+
+oprun_case dotenv-no-newline
+(umask 077 && printf 'OP_SERVICE_ACCOUNT_TOKEN=%s' "$(fake_token)" >"$OPR/.env")
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "no trailing newline: the last line is still read" oplog_has "op: vault get OpenMoji | token=present matches=yes"
+
+oprun_case dotenv-400
+valid_dotenv 400
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "mode 400 (owner read-only): accepted" rc_is 0
+
+oprun_case dotenv-symlink
+valid_dotenv
+mv -f "$OPR/.env" "$OPR/real-dotenv"
+ln -s real-dotenv "$OPR/.env"
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "symlinked .env to an owner-only file: accepted" rc_is 0
+
+# --- .env readable by others: refused, before op is called ---------------------
+for mode in 644 640 604 666 755; do
+  oprun_case "dotenv-mode-$mode"
+  valid_dotenv "$mode"
+  run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+  check ".env mode $mode: refused (exit non-zero)" rc_nonzero
+  check ".env mode $mode: says the mode and how to fix it" err_has "readable by other users (mode $mode). Run: chmod 600 "
+  check ".env mode $mode: op was never called" op_never_called
+  check ".env mode $mode: the release script did not run" release_not_run
+  check ".env mode $mode: the token appears in no output, log or op argv" token_nowhere
+done
+
+# --- .env present but unusable -------------------------------------------------
+oprun_case dotenv-empty
+write_dotenv 600 "OP_SERVICE_ACCOUNT_TOKEN="
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check ".env with the empty placeholder: refused" rc_nonzero
+check ".env with the empty placeholder: says it is empty" err_has "OP_SERVICE_ACCOUNT_TOKEN is empty"
+check ".env with the empty placeholder: op was never called" op_never_called
+
+oprun_case dotenv-no-token-line
+write_dotenv 600 "# nothing useful" "OTHER_VAR=1"
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check ".env without the token line: refused" rc_nonzero
+check ".env without the token line: says so" err_has "has no OP_SERVICE_ACCOUNT_TOKEN= line"
+check ".env without the token line: op was never called" op_never_called
+
+oprun_case dotenv-whitespace
+write_dotenv 600 "OP_SERVICE_ACCOUNT_TOKEN=$(fake_token) # trailing comment"
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check ".env value with a trailing comment: refused" rc_nonzero
+check ".env value with a trailing comment: says whitespace" err_has "contains whitespace or control characters"
+check ".env value with a trailing comment: op was never called" op_never_called
+check ".env value with a trailing comment: the token is not printed" token_nowhere
+
+oprun_case dotenv-directory
+mkdir "$OPR/.env"
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check ".env that is a directory: refused" rc_nonzero
+check ".env that is a directory: says it is not a regular file" err_has "is not a regular file"
+
+# --- .env absent: interactive 1Password ----------------------------------------
+oprun_case interactive
+run_oprun -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "no .env: exits 0" rc_is 0
+check "no .env: says it is using interactive auth" err_has "1Password auth: interactive"
+check "no .env: op ran without a token" oplog_has "op: vault get OpenMoji | token=absent matches=no"
+check "no .env: op run ran without a token" \
+  oplog_has "op: run --env-file $OPR/release/.env.example -- /usr/bin/env -u OP_SERVICE_ACCOUNT_TOKEN scripts/release.sh | token=absent matches=no"
+check "no .env: the release script ran" oplog_has "child: ran args="
+
+oprun_case env-token-only
+run_oprun "OP_SERVICE_ACCOUNT_TOKEN=$(fake_token)" -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "no .env, token already in the environment: used" oplog_has "op: vault get OpenMoji | token=present matches=yes"
+check "no .env, token already in the environment: says so" err_has "service account (token from the environment)"
+check "no .env, token already in the environment: the release script does not inherit it" oplog_has "child: token=absent"
+check "no .env, token already in the environment: the token appears in no output, log or op argv" token_nowhere
+
+# --- op cannot authenticate: stop before the release script --------------------
+oprun_case auth-fails-service-account
+valid_dotenv
+run_oprun OP_MODE=fail -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "service account rejected: exits non-zero" rc_nonzero
+check "service account rejected: says authentication failed" err_has "1Password authentication failed (service account (token from .env))"
+check "service account rejected: says nothing was run" err_has "Nothing was run."
+check "service account rejected: shows what op said" err_has "unauthorized: the service account token is not valid"
+check "service account rejected: points at the token and vault access" err_has "service account has read access to the OpenMoji vault"
+check "service account rejected: op run was never started" oplog_lacks "op: run "
+check "service account rejected: the release script did not run" release_not_run
+check "service account rejected: the token appears in no output, log or op argv" token_nowhere
+
+oprun_case auth-fails-interactive
+run_oprun OP_MODE=fail -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "interactive auth fails: exits non-zero" rc_nonzero
+check "interactive auth fails: says authentication failed" err_has "1Password authentication failed (interactive)"
+check "interactive auth fails: points at the app integration and .env" err_has "Integrate with the 1Password CLI"
+check "interactive auth fails: op run was never started" oplog_lacks "op: run "
+check "interactive auth fails: the release script did not run" release_not_run
+
+oprun_case auth-fails-echoing-token
+valid_dotenv
+run_oprun OP_MODE=fail-echo-token -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "op error that contains the token: exits non-zero" rc_nonzero
+check "op error that contains the token: it is replaced with <redacted>" err_has "invalid token <redacted>"
+check "op error that contains the token: the token appears in no output, log or op argv" token_nowhere
+
+# --- op-run.sh --check (make op-check) -----------------------------------------
+oprun_case check-ok
+valid_dotenv
+run_oprun -- "$OPR/scripts/op-run.sh" --check
+check "--check: exits 0 when authenticated" rc_is 0
+check "--check: says ok" out_has "op-run: ok, authenticated (service account (token from .env))"
+check "--check: only the auth check runs (no op run, no release script)" oplog_lacks "op: run "
+check "--check: the token appears in no output, log or op argv" token_nowhere
+run_oprun OP_MODE=fail -- "$OPR/scripts/op-run.sh" --check
+check "--check: exits non-zero when authentication fails" rc_nonzero
+check "--check: says authentication failed" err_has "1Password authentication failed"
+run_oprun -- "$OPR/scripts/op-run.sh" --check extra
+check "--check with extra arguments: usage, exit 2" rc_is 2
+check "--check with extra arguments: op was never called" op_never_called
+
+# --- the other op-run.sh preconditions -----------------------------------------
+oprun_case usage
+run_oprun -- "$OPR/scripts/op-run.sh"
+check "no command: prints usage and exits 2" rc_is 2
+check "no command: usage names --check" err_has "scripts/op-run.sh --check"
+
+oprun_case op-missing
+valid_dotenv
+run_oprun PATH=/usr/bin:/bin -- "$OPR/scripts/op-run.sh" scripts/release.sh
+check "op missing: exits non-zero" rc_nonzero
+check "op missing: clear error" err_has "1Password CLI"
+check "op missing: the token appears in no output" token_nowhere
+
+# --- make testflight and make op-check go through the same script --------------
+oprun_case make-service-account
+valid_dotenv
+run_oprun -- make testflight
+check "make testflight with .env: exits 0, non-interactively" rc_is 0
+check "make testflight with .env: ran the release script through op run" oplog_has "child: ran args="
+check "make testflight with .env: used the service account" err_has "service account (token from .env)"
+check "make testflight with .env: the token appears in no output, log or op argv" token_nowhere
+
+oprun_case make-interactive
+run_oprun -- make testflight
+check "make testflight without .env: exits 0, interactively" rc_is 0
+check "make testflight without .env: ran the release script through op run" oplog_has "child: ran args="
+check "make testflight without .env: used interactive auth" err_has "1Password auth: interactive"
+
+oprun_case make-auth-fails
+valid_dotenv
+run_oprun OP_MODE=fail -- make testflight
+check "make testflight, auth fails: exits non-zero" rc_nonzero
+check "make testflight, auth fails: the release script did not run" release_not_run
+check "make testflight, auth fails: the token appears in no output, log or op argv" token_nowhere
+
+oprun_case make-op-check
+valid_dotenv
+run_oprun -- make op-check
+check "make op-check: exits 0 and only checks auth" rc_is 0
+check "make op-check: no op run, no release script" oplog_lacks "op: run "
+check "make op-check: the token appears in no output, log or op argv" token_nowhere
+
+# ============================================== the other lane artifacts =====
+group "Makefile, .env.example files, ExportOptions.plist, .gitignore"
 
 make_testflight_dry_run() { make -n -C "$ROOT" testflight | grep -qF "scripts/op-run.sh scripts/release.sh"; }
 check "Makefile: make testflight runs op-run.sh then release.sh" make_testflight_dry_run
+make_op_check_dry_run() { make -n -C "$ROOT" op-check | grep -qxF "scripts/op-run.sh --check"; }
+check "Makefile: make op-check runs op-run.sh --check" make_op_check_dry_run
+
+# The root .env.example is the committed template for the git-ignored .env.
+root_env_assignments() { grep -vE '^[[:space:]]*(#|$)' "$ROOT/.env.example"; }
+root_env_is_only_the_empty_placeholder() { [ "$(root_env_assignments)" = "OP_SERVICE_ACCOUNT_TOKEN=" ]; }
+check "root .env.example: only an empty OP_SERVICE_ACCOUNT_TOKEN= placeholder" root_env_is_only_the_empty_placeholder
+check "root .env.example: says to chmod 600" grep -qF "chmod 600" "$ROOT/.env.example"
+check "root .env.example: says to scope it read-only to the OpenMoji vault" grep -qF "read-only to the OpenMoji vault" "$ROOT/.env.example"
+check "root .env.example: says never to commit .env" grep -qiF "never commit" "$ROOT/.env.example"
 
 env_names() { sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' "$ROOT/release/.env.example"; }
 env_lines_are_op_refs() {
@@ -611,6 +920,8 @@ not_ignored() { ! git -C "$ROOT" check-ignore -q "$1"; }
 check ".gitignore: build/release output is ignored" git -C "$ROOT" check-ignore -q build/release/OpenMoji-1.xcarchive
 check ".gitignore: .p8 keys are ignored" git -C "$ROOT" check-ignore -q AuthKey_ABCDE12345.p8
 check ".gitignore: release/.env.example is not ignored" not_ignored release/.env.example
+check ".gitignore: the local .env is ignored" git -C "$ROOT" check-ignore -q .env
+check ".gitignore: the root .env.example template is not ignored" not_ignored .env.example
 
 no_profile_override_in_script() { ! grep -v '^[[:space:]]*#' "$ROOT/scripts/release.sh" | grep -q 'PROVISIONING_PROFILE_SPECIFIER'; }
 check "release.sh: no PROVISIONING_PROFILE_SPECIFIER outside comments" no_profile_override_in_script

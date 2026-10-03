@@ -33,3 +33,4 @@ The PRD's REL-4 and REL-9 were updated to match: REL-4 holds the key in 1Passwor
 - Releases need the owner's Mac, 1Password and the signing keychain; nothing ships while that Mac is unavailable.
 - REL-9 is satisfied by an alert, not an automatic rebuild. The alert infers expiry from tag dates rather than querying App Store Connect, since that would need a key in GitHub.
 - The Sagelet pitfalls (Homebrew rsync, login-keychain `errSecInternalComponent`, `xcode-select`) are designed in from the start.
+- Authenticating `op` without the 1Password app (a service-account token in a git-ignored `.env`) is covered by [ADR-0016](0016-onepassword-service-account-auth.md).
