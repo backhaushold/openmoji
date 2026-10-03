@@ -101,5 +101,41 @@ Optional, only if the missing margin around subjects turns out to matter on the 
 
 ## Follow-ups
 
-- Subjects come back at alpha 250 to 254, which likely inflates PNG size (up to 488 KB at 560 or 618 px against the 500 KB limit). Worth measuring whether snapping alpha of 250 or more to 255 before encoding shrinks stickers without a visible change. Filed as openmoji-ufo.
+- Subjects come back at alpha 250 to 254, which likely inflates PNG size (up to 488 KB at 560 or 618 px against the 500 KB limit). Worth measuring whether snapping alpha of 250 or more to 255 before encoding shrinks stickers without a visible change. Filed as openmoji-ufo. Measured: see Alpha snap below (not implemented).
 - Tech spec section 5.2 calls `usage` optional and section 7.2 assumes a roughly 2 MB source PNG. Observed: `usage` is always present with `input_tokens_details` and `output_tokens_details`, and raw PNGs are about 1.1 MB. No spec edit was made here.
+
+## Alpha snap
+
+Issue openmoji-ufo. Question: would snapping alpha 250 to 254 up to 255 on the ImageIO thumbnail, before the PNG encode, shrink the sticker, without changing anything visible? Bar: a size win of at least 10%.
+
+**Decision: not implemented.** `StickerProcessor` is unchanged. The numbers below come from synthetic fixtures, not from real model output (see Data); they put the win at about 0.5% to 6% in the realistic cases and 10% to 14% only in one corner. Re-open if `alpha-snap dir` on real raw PNGs shows 10% or more.
+
+### Data
+
+The 60 raw M1 PNGs are gone (`out/` is git-ignored and lived in a removed worktree) and regenerating them costs money this issue did not authorise, so no real raw output was measured. Two substitutes, both from [spikes/m1/alpha-snap.swift](../../spikes/m1/alpha-snap.swift):
+
+- **Real alpha structure, from the contact sheets (`sheets` mode).** Each sticker is composited over a light (`F2F2F7`) and a dark (`1C1C1E`) background, so per channel (light - dark) = (1 - alpha) x (L - D) and the alpha deficit (255 - alpha) can be read back per pixel to about half a level, at 300 px. Over 2.9 million deep-interior pixels (all 60 stickers): mean deficit 2.3 (alpha about 253), 75% at 2 levels, and neighbouring pixels are strongly correlated (0.79 at 1 px apart, 0.54 at 5 px). I.i.d. noise over 250 to 254 would read 0.20 and 0.05 with a mean deficit of 3.5. So the model's alpha is a slowly varying field around 253, with at most weak per-pixel noise; synthetic fields with a +-1 per-pixel component on 25% to 100% of pixels bracket the real lag figures (0.82 / 0.64 and 0.62 / 0.47).
+- **Synthetic 1024 px fixtures (`synthetic` mode).** Flat-shaded emoji art with an outline, gradients, fur-like strokes and anti-aliased edges (4 variants, one with no strokes), straight RGBA like the model's PNG, alpha in the fully opaque pixels from the models above, and per-channel colour grain of 0, 1 or 2 levels. Run through the same thumbnail, PNG encode and ladder as section 7.1. Calibration target: the real stickers cost 12.5 to 20 bits per visible pixel at 618 px (mean 14.3, from `analysis-v1.csv`). Colour grain cannot be read from the sheets well enough to pin down, which is why it is a sweep.
+
+### Results
+
+Size change at 618 px with the snap (negative is smaller), and baseline bits per visible pixel, ranges over the 4 variants:
+
+| Alpha model | grain 0 | grain 1 | grain 2 |
+|---|---|---|---|
+| smooth (253 +- 1) | -1.5 to -3.5%, 6.7 to 12.5 b/px | -0.6%, 12.0 to 15.7 | -0.4 to -0.5%, 14.1 to 17.2 |
+| smooth + noise on 1 pixel in 4 | -9.8 to -13.6%, 9.6 to 14.2 | -3.4 to -4.1%, 12.5 to 16.3 | -2.6 to -3.4%, 14.5 to 17.7 |
+| smooth + noise on every pixel | -11.6 to -14.5%, 11.0 to 15.3 | -5.0 to -5.8%, 12.9 to 16.8 | -3.8 to -4.7%, 14.7 to 18.0 |
+| i.i.d. 250 to 254 (ruled out by the sheets) | -12.8 to -16.3%, 12.0 to 16.2 | -7.2 to -7.8%, 13.4 to 17.2 | -4.9 to -6.0%, 15.0 to 18.3 |
+
+The same 12.5 to 20 b/px that the real stickers show is reached both with no colour grain and noisy alpha (a roughly 10% to 14% win) and with grain of about 1 level and calm alpha (0.5% to 6%), and the real data cannot tell these apart. Two weak pointers favour the second: the sheet alpha statistics sit between the "smooth" and "noise on every pixel" rows, and the colour residual in flat areas of the sheets (rms 0.54 levels; the same measure gives 0.37 to 0.49 for grain 0, 0.49 to 0.55 for grain 1 and 0.63 or more for grain 2) reads like grain of about a level, though the real art's own texture feeds that number too. So the realistic band is 0.5% to 6%, and the 10%+ corner needs both no colour grain and per-pixel alpha noise.
+
+- **Visible change.** At every edge of every fixture: 0 pixels below alpha 250 changed (byte-identical, so anti-aliased edges are untouched); pixels from 250 to 254 move by at most their own deficit when composited on white or black (5 levels of 255 in the worst case, 2 to 3 at the real mean). The snap un-premultiplies the colour by the old alpha, so only the near-opaque interior goes from about 99% to 100% opaque; there is no halo and no edge change.
+- **Cost.** Median 0.46 ms at 618 px (0.12 ms at 300) in an optimised build, against 8 ms for one PNG encode. It needs one extra 618 px premultiplied bitmap (1.5 MB), taking the section 7.2 peak from about 7 MB to about 8.5 MB. Only the thumbnail is workable; a full-size snap would need the 4 MB decode that NFR-5 avoids.
+- **It would not change a ladder outcome in the M1 set.** 57 of 60 stickers already fit at 618 px. The three that stepped to 560 px (`dad's burnt pancakes`: 487,771 / 471,924 / 479,559 bytes at 560 px) would be about 594 / 575 / 584 KB at 618 px by pixel count and need a cut of 13% to 16%; the realistic band is nowhere near, and the 10%+ corner only just reaches the smallest of the three. At best the snap buys headroom under 500 KB, not a larger sticker.
+
+### Why not
+
+At best an unproven 10% win in one corner, at 0.5% to 6% in the realistic band, with no sticker in the sample moving up the ladder outside that corner; against about 25 lines of pixel code plus a test in the one function whose point is a simple, predictable ladder. Not worth adding on synthetic evidence.
+
+To settle it with real data: save the raw PNGs from the next paid run (for example the 3 family in-jokes at the chosen quality, see Caveats), then `swiftc -O spikes/m1/alpha-snap.swift -o /tmp/alpha-snap && /tmp/alpha-snap dir spikes/m1/out/raw/<template>/<quality>`.
