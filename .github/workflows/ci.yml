@@ -149,11 +149,15 @@ jobs:
         if: steps.scope.outputs.docs_only != 'true'
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
+        # Ad-hoc signing (`CODE_SIGN_IDENTITY=-`, no account or profile needed
+        # for a simulator) rather than CODE_SIGNING_ALLOWED=NO: an unsigned host
+        # app carries no entitlements, so the Keychain round-trip in the shared
+        # access group fails with errSecMissingEntitlement (-34018).
         run: |
           xcodebuild test \
             -project OpenMoji.xcodeproj \
             -scheme OpenMojiMessagesTests \
             -destination "id=$SIM_UDID" \
             -derivedDataPath "$DERIVED_DATA" \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY=- \
             | xcbeautify --renderer github-actions

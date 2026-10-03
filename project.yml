@@ -116,6 +116,7 @@ targets:
       - MessagesExtensionTests
     dependencies:
       - target: OpenMoji
+      - package: OpenMojiCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.backhaushold.openmoji.MessagesTests
