@@ -14,7 +14,13 @@ final class MessagesViewController: MSMessagesAppViewController {
         super.viewDidLoad()
         model.presentationStyle = presentationStyle
 
-        let host = UIHostingController(rootView: RootView(model: model))
+        // Clearing the key sends the model back to needs-key (FR-5).
+        let settings = SettingsModel(
+            credentials: KeychainCredentialStore(),
+            validator: OpenAIClient(),
+            onCleared: { [model] in model.refreshKey() }
+        )
+        let host = UIHostingController(rootView: RootView(model: model, settings: settings))
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(host.view)
