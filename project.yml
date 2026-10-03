@@ -114,6 +114,9 @@ targets:
     platform: iOS
     sources:
       - MessagesExtensionTests
+      # An app extension can't be imported, so the UI-free model code is
+      # compiled into the test bundle too. Keep views out of Model/.
+      - MessagesExtension/Model
     dependencies:
       - target: OpenMoji
       - package: OpenMojiCore
