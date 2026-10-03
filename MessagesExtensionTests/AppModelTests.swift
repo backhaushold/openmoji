@@ -331,6 +331,25 @@ struct AppModelGenerationTests {
         #expect(rig.model.state == .idle)
         #expect(rig.model.prompt == defaultTestPrompt)
     }
+
+    /// The 90 s timeout (NFR-4) reaches the model as `.timeout`: the client's
+    /// `URLError.timedOut` is mapped in `OpenMojiCoreTests`. A held fake stands
+    /// in for the wait, so the test doesn't take 90 s.
+    @Test func aTimeoutAfterWaitingSurfacesAsTimeoutAndKeepsThePrompt() async throws {
+        let rig = makeRig(prompt: "a sleepy owl")
+        await rig.generator.hold("a sleepy owl")
+        await rig.generator.enqueue(.failure(.timeout), for: "a sleepy owl")
+        rig.model.generate()
+        let task = try #require(inFlightTask(of: rig.model))
+        #expect(rig.model.route == .generating)
+
+        await rig.generator.release("a sleepy owl")
+        await task.value
+
+        #expect(rig.model.state == .failed(.timeout, prompt: "a sleepy owl"))
+        #expect(rig.model.route == .failed(.timeout))
+        #expect(rig.model.prompt == "a sleepy owl")
+    }
 }
 
 /// Cancel (FR-10) and `willResignActive`, which calls the same `cancel()`.
@@ -404,6 +423,60 @@ struct AppModelCancelTests {
         await rig.generator.release("second")
         await second.value
         #expect(rig.model.state == .preview(makeProcessedSticker(prompt: "second")))
+    }
+
+    /// Cancel on the Generating view lands on the style's home (Compose when
+    /// expanded, "New sticker" when compact), never on the error route, even
+    /// when the abandoned request goes on to fail.
+    @Test(arguments: [MSMessagesAppPresentationStyle.compact, .expanded])
+    func cancelLeavesGeneratingForTheHomeRouteWithNoError(style: MSMessagesAppPresentationStyle) async throws {
+        let home: AppModel.Route = style == .expanded ? .compose : .compactHome
+        let rig = makeRig(prompt: "a brave fox")
+        rig.model.presentationStyle = style
+        await rig.generator.hold("a brave fox")
+        await rig.generator.enqueue(.failure(.offline), for: "a brave fox")
+        rig.model.generate()
+        let task = try #require(inFlightTask(of: rig.model))
+        #expect(rig.model.route == .generating)
+
+        rig.model.cancel()
+        #expect(rig.model.route == home)
+        #expect(rig.model.prompt == "a brave fox")
+
+        await rig.generator.release("a brave fox")
+        await task.value
+        #expect(rig.model.route == home)
+        #expect(rig.model.prompt == "a brave fox")
+    }
+
+    /// `willResignActive` calls `cancel()` and `willBecomeActive` calls
+    /// `refreshKey()` (`MessagesViewController`, which a test can't import).
+    @Test func resigningMidGenerationAbandonsItAndTheNextActivationStartsAtThePrompt() async throws {
+        let rig = makeRig(prompt: "a brave fox")
+        rig.model.presentationStyle = .expanded
+        await rig.generator.hold("a brave fox")
+        await rig.generator.enqueue(.success(makeProcessedSticker(prompt: "a brave fox")), for: "a brave fox")
+        rig.model.generate()
+        let task = try #require(inFlightTask(of: rig.model))
+
+        rig.model.cancel()  // willResignActive
+        #expect(task.isCancelled)
+        #expect(rig.model.state == .idle)
+
+        rig.model.refreshKey()  // willBecomeActive
+        #expect(rig.model.route == .compose)
+        #expect(rig.model.prompt == "a brave fox")
+
+        // The abandoned request finishing late changes nothing.
+        await rig.generator.release("a brave fox")
+        await task.value
+        #expect(rig.model.state == .idle)
+
+        // And a new generation works.
+        await rig.generator.enqueue(.success(makeProcessedSticker(prompt: "a brave fox")), for: "a brave fox")
+        rig.model.generate()
+        await settle(rig.model)
+        #expect(rig.model.state == .preview(makeProcessedSticker(prompt: "a brave fox")))
     }
 
     @Test func cancelOutsideGeneratingDoesNothing() async {
