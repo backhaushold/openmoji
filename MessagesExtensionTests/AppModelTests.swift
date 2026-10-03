@@ -115,6 +115,126 @@ struct AppModelKeyRoutingTests {
     }
 }
 
+/// Counts how often the model asks the host for the expanded style.
+@MainActor
+private final class ExpandRequests {
+    private(set) var count = 0
+    func record() { count += 1 }
+}
+
+/// What the root view shows for a key and a presentation style (tech spec §8
+/// Routing, §10; FR-5, NFR-10). `refreshKey()` is what `willBecomeActive` calls.
+@MainActor
+struct AppModelRouteTests {
+    @Test func noKeyInCompactShowsTheLibraryWithSetUp() {
+        let model = makeRig(key: nil).model
+        model.presentationStyle = .compact
+        #expect(model.state == .needsKey)
+        #expect(model.route == .compactSetUp)
+    }
+
+    @Test func noKeyInExpandedOpensSettingsNotTheCompose() {
+        let model = makeRig(key: nil).model
+        model.presentationStyle = .expanded
+        #expect(model.route == .settings)
+    }
+
+    @Test func anUnreadableKeychainRoutesLikeNoKey() {
+        let model = AppModel(credentials: UnreadableCredentialStore(), generator: FakeGenerator())
+        #expect(model.route == .compactSetUp)
+        model.presentationStyle = .expanded
+        #expect(model.route == .settings)
+    }
+
+    @Test func aKeyInCompactShowsTheLibraryWithNewSticker() {
+        let model = makeRig().model
+        model.presentationStyle = .compact
+        #expect(model.route == .compactHome)
+    }
+
+    @Test func aKeyInExpandedOpensCompose() {
+        let model = makeRig().model
+        model.presentationStyle = .expanded
+        #expect(model.route == .compose)
+    }
+
+    @Test func theRouteFollowsThePresentationStyle() {
+        let model = makeRig(key: nil).model
+        model.presentationStyle = .expanded
+        #expect(model.route == .settings)
+        model.presentationStyle = .compact
+        #expect(model.route == .compactSetUp)
+    }
+
+    @Test func setUpRequestsTheExpandedStyle() {
+        let model = makeRig(key: nil).model
+        let requests = ExpandRequests()
+        model.requestExpandedStyle = { requests.record() }
+
+        model.startSetUp()
+        #expect(requests.count == 1)
+        // Still no key: the route only changes once the host reports expanded.
+        #expect(model.state == .needsKey)
+        #expect(model.route == .compactSetUp)
+
+        model.presentationStyle = .expanded
+        #expect(model.route == .settings)
+    }
+
+    @Test func setUpIsSafeBeforeTheHostSetsTheRequest() {
+        makeRig(key: nil).model.startSetUp()
+    }
+
+    @Test(arguments: [MSMessagesAppPresentationStyle.compact, .expanded])
+    func becomingActiveAfterAKeyWasSavedMeanwhileLeavesSetUp(style: MSMessagesAppPresentationStyle) throws {
+        let rig = makeRig(key: nil)
+        rig.model.presentationStyle = style
+        try rig.credentials.save(fakeKey)
+
+        rig.model.refreshKey()
+        #expect(rig.model.route == (style == .expanded ? .compose : .compactHome))
+    }
+
+    @Test(arguments: [MSMessagesAppPresentationStyle.compact, .expanded])
+    func becomingActiveAfterTheKeyWasClearedMeanwhileRoutesToSetUp(style: MSMessagesAppPresentationStyle) throws {
+        let rig = makeRig()
+        rig.model.presentationStyle = style
+        try rig.credentials.clear()
+
+        rig.model.refreshKey()
+        #expect(rig.model.route == (style == .expanded ? .settings : .compactSetUp))
+    }
+
+    @Test func becomingActiveWithNothingChangedKeepsTheRoute() {
+        let withKey = makeRig().model
+        withKey.presentationStyle = .expanded
+        withKey.refreshKey()
+        #expect(withKey.route == .compose)
+
+        let noKey = makeRig(key: nil).model
+        noKey.presentationStyle = .expanded
+        noKey.refreshKey()
+        #expect(noKey.route == .settings)
+    }
+
+    @Test(arguments: [MSMessagesAppPresentationStyle.compact, .expanded])
+    func generatingPreviewAndErrorRouteTheSameInBothStyles(style: MSMessagesAppPresentationStyle) async {
+        let rig = makeRig()
+        rig.model.presentationStyle = style
+        await rig.generator.enqueue(.failure(.serviceUnavailable))
+
+        rig.model.generate()
+        #expect(rig.model.route == .generating)
+        await settle(rig.model)
+        #expect(rig.model.route == .failed(.serviceUnavailable))
+
+        await rig.generator.enqueue(.success(makeProcessedSticker()))
+        rig.model.generate()
+        await settle(rig.model)
+        #expect(rig.model.route == .preview)
+    }
+}
+
 /// idle → generating → preview, and failures (FR-6, FR-11, FR-22, FR-23).
 @MainActor
 struct AppModelGenerationTests {

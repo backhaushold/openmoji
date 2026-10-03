@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Switches on `AppModel.state`. Idle is real (Compose when expanded, "New
+/// Switches on `AppModel.route`. Idle is real (Compose when expanded, "New
 /// sticker" when compact); Generating, Preview and Error are placeholders for
 /// separate beads. Settings is real: expanded with no key opens it directly
-/// (FR-5), and Compose's gear opens it as a sheet.
+/// (FR-5), compact with no key offers "Set up OpenMoji", and Compose's gear
+/// opens it as a sheet.
 struct RootView: View {
     let model: AppModel
     let settings: SettingsModel
@@ -22,25 +23,21 @@ struct RootView: View {
     }
 
     @ViewBuilder private var content: some View {
-        switch model.state {
-        case .needsKey:
-            if model.presentationStyle == .expanded {
-                // Done, once a key is saved, picks up the new key: needs-key → idle.
-                SettingsView(model: settings) { model.refreshKey() }
-            } else {
-                Text("Set up OpenMoji")
-            }
-        case .idle:
-            if model.presentationStyle == .expanded {
-                ComposeView(model: model) { showingSettings = true }
-            } else {
-                CompactHomeView(model: model)
-            }
+        switch model.route {
+        case .compactHome:
+            CompactHomeView(model: model, needsSetUp: false)
+        case .compactSetUp:
+            CompactHomeView(model: model, needsSetUp: true)
+        case .settings:
+            // Done, once a key is saved, picks up the new key: needs-key → idle.
+            SettingsView(model: settings) { model.refreshKey() }
+        case .compose:
+            ComposeView(model: model) { showingSettings = true }
         case .generating:
             Text("Making your sticker…")
         case .preview:
             Text("Preview")
-        case .failed(let error, _):
+        case .failed(let error):
             Text(error.userMessage ?? "Something went wrong.")
         }
     }

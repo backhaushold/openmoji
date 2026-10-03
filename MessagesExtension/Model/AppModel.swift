@@ -69,6 +69,35 @@ final class AppModel {
     /// Mirrors the host's presentation style; set by `MessagesViewController`.
     var presentationStyle: MSMessagesAppPresentationStyle = .compact
 
+    /// What `RootView` shows, from the state and the presentation style (tech
+    /// spec §8 Routing, §10; FR-5). Sending stickers needs no key, so compact
+    /// always has the library; only its action changes (NFR-10).
+    enum Route: Equatable {
+        /// Compact, ready: the library and "New sticker".
+        case compactHome
+        /// Compact, no key: the library and "Set up OpenMoji".
+        case compactSetUp
+        /// Expanded, no key: straight to Settings instead of the prompt.
+        case settings
+        /// Expanded, ready: the prompt.
+        case compose
+        /// These three look the same in both styles for now.
+        case generating
+        case preview
+        case failed(GenerationError)
+    }
+
+    var route: Route {
+        let expanded = presentationStyle == .expanded
+        switch state {
+        case .needsKey: return expanded ? .settings : .compactSetUp
+        case .idle: return expanded ? .compose : .compactHome
+        case .generating: return .generating
+        case .preview: return .preview
+        case .failed(let error, _): return .failed(error)
+        }
+    }
+
     @ObservationIgnored private let credentials: any CredentialStore
     @ObservationIgnored private let generator: any StickerGenerating
     /// Bumped whenever a generation starts or is abandoned, so a late result
@@ -82,7 +111,9 @@ final class AppModel {
         refreshKey()
     }
 
-    /// Re-reads whether a key is stored. No key (or an unreadable Keychain, as
+    /// Re-reads whether a key is stored; `MessagesViewController` calls it on
+    /// `willBecomeActive` (FR-5), so a key saved or cleared since the last time
+    /// the extension was active is picked up. No key (or an unreadable Keychain, as
     /// generating would fail the same way) routes to `needsKey` and abandons
     /// any generation; a key moves `needsKey` on to `idle`.
     func refreshKey() {
@@ -97,6 +128,12 @@ final class AppModel {
     /// Compact's "New sticker": text entry only happens in expanded, so ask
     /// the host to expand (tech spec §10).
     func startNewSticker() {
+        requestExpandedStyle()
+    }
+
+    /// Compact's "Set up OpenMoji" (no key): Settings is in expanded, so ask
+    /// the host to expand. With no key, expanded opens straight to it.
+    func startSetUp() {
         requestExpandedStyle()
     }
 
