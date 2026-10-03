@@ -114,7 +114,10 @@ xcodebuild test -project OpenMoji.xcodeproj -scheme OpenMojiMessagesTests \
 
 - Keep `CODE_SIGN_IDENTITY=-` on the simulator test run. `CODE_SIGNING_ALLOWED=NO` leaves the host app without its
   Keychain entitlement and the Keychain test fails with `errSecMissingEntitlement` (-34018).
-- Docs-only changes skip `xcodegen` and `xcodebuild` in CI but still run everything above them, so run at least those.
+- CI treats a change touching only `docs/`, `*.md`, `.gitignore` or `.claude/` as docs-only: it runs just gitleaks (the
+  `verify` check still reports) and skips the lint, test and build steps. Anything touching Swift, `project.yml`,
+  `scripts/`, `Makefile`, `Package.swift` or `.github/` (the workflow included) runs the full pipeline. For a docs-only
+  change, run at least `gitleaks detect --redact --no-banner`.
 - UI-free app code goes in `MessagesExtension/Model/` (it is compiled into the test bundle); views stay out of it.
 - Do **not** run `make testflight`, `make testflight-status` or `make op-check`: they are for the release Mac and need
   1Password and App Store Connect secrets. `make release-test` is the safe one. Never read or open `.env`

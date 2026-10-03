@@ -71,7 +71,7 @@ You can also open the generated `OpenMoji.xcodeproj` in Xcode and run the `OpenM
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every pull request and every push to `main`, on `macos-latest`, and only verifies: gitleaks over the full history, SwiftFormat and SwiftLint (pull requests), `shellcheck`, `make release-test`, `swift test`, then `xcodegen generate` and the simulator tests. Docs-only changes skip the last two. CI never signs or uploads, and the repo has **no GitHub Actions secrets**: the workflows use only the built-in `GITHUB_TOKEN`.
+`.github/workflows/ci.yml` runs on every pull request and every push to `main`, on `macos-latest`, and only verifies: gitleaks over the full history, SwiftFormat and SwiftLint (pull requests), `shellcheck`, `make release-test`, `swift test`, then `xcodegen generate` and the simulator tests. Changes that touch only docs (`docs/`, `*.md`, `.gitignore`, `.claude/`) run just gitleaks. CI never signs or uploads, and the repo has **no GitHub Actions secrets**: the workflows use only the built-in `GITHUB_TOKEN`.
 
 `.github/workflows/testflight-expiry.yml` runs daily and opens a GitHub issue when the newest TestFlight build (TestFlight builds last 90 days) is about two weeks from expiring. It works from the date of the `build-N` tag the release lane pushes, so it needs no App Store Connect access.
 
