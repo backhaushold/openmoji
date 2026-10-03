@@ -1,0 +1,61 @@
+template,quality,index,i1,i2,i3,i4,i5,note
+v1,low,01,1,1,1,1,0,
+v1,low,02,1,1,1,1,0,bust fills 99% of height; base outline intact
+v1,low,03,1,1,1,1,0,
+v1,low,04,1,1,1,1,0,
+v1,low,05,1,1,1,1,0,
+v1,low,06,1,1,1,1,0,hand and mug reach 98% of the width
+v1,low,07,1,1,1,1,0,
+v1,low,08,1,1,1,1,0,
+v1,low,09,1,1,1,1,0,ear tips flush with the top edge (flagged by the framing check); outline intact
+v1,low,10,1,1,1,1,0,bust base inside the frame; dark hair outline is low contrast on the dark bubble; no halo
+v1,low,11,1,1,1,1,0,
+v1,low,12,1,1,1,1,0,prompt "a" gave an octopus; no letter drawn
+v1,low,13,1,1,1,1,0,busiest of the set; the cat face is small at 100 px but it reads
+v1,low,14,1,1,1,1,0,belly base is a hard unoutlined edge on dark; not a halo
+v1,low,15,1,1,1,1,0,stepped down to 560 px for the 500 KB limit
+v1,low,16,1,1,1,1,0,
+v1,low,17,1,1,1,1,0,
+v1,low,18,1,1,1,1,0,
+v1,low,19,1,1,1,1,0,
+v1,low,20,1,1,1,1,0,
+v1,medium,01,1,1,1,1,0,
+v1,medium,02,1,1,1,1,0,bust base sits on the canvas edge (flagged by the framing check); outline intact; not sliced
+v1,medium,03,1,1,1,1,0,
+v1,medium,04,1,1,1,1,0,
+v1,medium,05,1,1,1,1,0,
+v1,medium,06,1,1,1,1,0,
+v1,medium,07,1,1,1,1,0,
+v1,medium,08,1,1,1,1,0,
+v1,medium,09,1,1,1,1,0,
+v1,medium,10,1,1,1,1,0,bust base inside the frame; dark hair outline is low contrast on the dark bubble; no halo
+v1,medium,11,1,1,1,1,0,
+v1,medium,12,1,1,1,1,0,prompt "a" gave a golden puppy; no letter drawn
+v1,medium,13,1,1,1,1,0,busiest of the set; the cat face is small at 100 px but it reads
+v1,medium,14,1,1,1,1,0,belly base is a hard unoutlined edge on dark; not a halo
+v1,medium,15,1,1,1,1,0,stepped down to 560 px for the 500 KB limit
+v1,medium,16,1,1,1,1,0,
+v1,medium,17,1,1,1,1,0,
+v1,medium,18,1,1,1,1,0,
+v1,medium,19,1,1,1,1,0,
+v1,medium,20,1,1,1,1,0,
+v1,high,01,1,1,1,1,0,
+v1,high,02,1,1,1,1,0,bust base sits on the canvas edge (flagged by the framing check); outline intact; not sliced
+v1,high,03,1,1,1,1,0,
+v1,high,04,1,1,1,1,0,
+v1,high,05,1,1,1,1,0,blue glowing blob with snowflakes; reads as frozen more than as a brain
+v1,high,06,1,1,1,1,0,
+v1,high,07,1,1,1,1,0,
+v1,high,08,1,1,1,1,0,
+v1,high,09,1,1,1,1,0,
+v1,high,10,1,1,1,1,0,bust base inside the frame; dark hair outline is low contrast on the dark bubble; no halo
+v1,high,11,1,1,1,1,0,
+v1,high,12,1,1,1,1,0,prompt "a" gave a golden puppy; no letter drawn
+v1,high,13,1,1,1,1,0,busiest of the set; the cat face is small at 100 px but it reads
+v1,high,14,1,1,1,1,0,belly base is a hard unoutlined edge on dark; not a halo
+v1,high,15,1,1,1,1,0,stepped down to 560 px for the 500 KB limit
+v1,high,16,1,1,1,1,0,
+v1,high,17,1,1,1,1,0,
+v1,high,18,1,1,1,1,0,
+v1,high,19,1,1,1,1,0,
+v1,high,20,1,1,1,1,0,

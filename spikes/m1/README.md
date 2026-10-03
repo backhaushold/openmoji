@@ -59,7 +59,7 @@ swift spikes/m1/spike.swift summary
 - A prompt x quality x template that already has a ledger line is skipped, so a re-run never pays twice. `--force` overrides that (and counts against the cap).
 - The cap is 75 requests in total across all invocations: `run` refuses to start if the ledger plus the planned requests would exceed it, and `--max-requests` can only lower it.
 - No retries, including after moderation refusals: every refusal is recorded and moves on.
-- `--template v2` runs the revised template (see `Templates` in `spike.swift`); outputs and sheets are kept apart under `out/*/v2`.
+- Templates live in `Templates` in `spike.swift`; `--template <name>` selects one, and outputs and sheets are kept apart per template name.
 - Requests use exactly the section 5.1 fields: `model`, `prompt`, `n=1`, `size=1024x1024`, `quality`, `background=transparent`, `output_format=png`, `moderation=auto`; no `response_format`. The spike timeout is 180 s (not NFR-4's 90 s) so slow runs are measured; runs over 90 s are counted in `summary`.
 
 ## Contact sheets

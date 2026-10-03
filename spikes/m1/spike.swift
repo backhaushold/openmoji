@@ -102,14 +102,10 @@ enum Templates {
         No text, letters, numbers, captions or watermarks.
         """
 
-    /// Revised template, only used if v1 misses the bar on medium (see the findings doc).
-    static let v2 = v1
-
     static func render(_ name: String, subject: String) -> String? {
         let base: String
         switch name {
         case "v1": base = v1
-        case "v2": base = v2
         default: return nil
         }
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -401,8 +397,8 @@ struct Analysis {
     var centerDY = 0.0
     var lightEdgeFraction = 0.0
 
-    /// Item 2 support: alpha channel present, corners fully clear, mostly transparent.
-    var alphaOK: Bool { hasAlphaChannel && cornerMaxAlpha == 0 && transparentFraction >= 0.10 }
+    /// Item 2 support: alpha channel present, corners clear (alpha <= 4 of 255, invisible), mostly transparent.
+    var alphaOK: Bool { hasAlphaChannel && cornerMaxAlpha <= 4 && transparentFraction >= 0.10 }
     /// Item 4 support: nothing touches the canvas edge and the subject is roughly centred.
     var framingOK: Bool {
         borderTouchFraction == 0 && abs(centerDX) <= 0.10 && abs(centerDY) <= 0.10
@@ -432,7 +428,7 @@ func analyze(_ image: CGImage) -> Analysis? {
     for y in 0 ..< height {
         for x in 0 ..< width {
             let alpha = pixels.alpha(x, y)
-            if alpha == 0 { transparent += 1 } else if alpha < 255 { partial += 1 }
+            if alpha == 0 { transparent += 1 } else if alpha < 250 { partial += 1 } // 250-255 counts as opaque: subjects sit at 250-254
             if alpha > 16 {
                 minX = min(minX, x)
                 maxX = max(maxX, x)
@@ -806,7 +802,7 @@ func syntheticImage(_ mode: String) -> CGImage? {
 
 let helpText = """
     usage: swift spikes/m1/spike.swift <command> [options]
-      run       send requests (needs OPENAI_API_KEY via op run)   --qualities low,medium,high --prompts 1,2|all --template v1|v2 --force
+      run       send requests (needs OPENAI_API_KEY via op run)   --qualities low,medium,high --prompts 1,2|all --template v1 --force
       render    process raw PNGs, write stickers, analysis CSV and contact sheets (free)
       summary   latency, cost and score statistics from the ledger and scores.csv (free)
       selftest  synthetic images through the processing and sheet code (free)
