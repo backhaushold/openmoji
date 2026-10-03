@@ -86,6 +86,11 @@ labels `m1`–`m5`), not here.
 - Verify OpenAI/Apple API details against official docs, not memory — the PRD already had stale model facts.
 - Open questions are `decision` beads (label `open-question`). Resolving one means: `bd close <id> --reason "Ratified: ..."`,
   mark it resolved in `docs/open-questions.md`, fix any tech-spec text that says it's open, and update the PRD's line for it.
+- Runs that spend money or need the `.env` token (paid OpenAI calls, real `op`) are run by the user via a `! …` command.
+  Agents build and test such scripts with no spend (loopback stub, request cap) and never route around a sandbox refusal.
+- Keep `swift-tools-version` at the lowest that supports the deployment target (6.2 for `.iOS(.v26)`) so CI stays on
+  stock `macos-latest`; don't raise it to match a newer local toolchain.
+- Copy any artifacts you need out of an agent worktree before removing it.
 
 ## Build & Test
 

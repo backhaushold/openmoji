@@ -2,34 +2,31 @@
 
 Notes kept up to date at the end of each session. Rules live in CLAUDE.md, the backlog lives in Beads (`bd ready`), and this file holds understanding.
 
-## Current understanding (as of 2026-10-02)
+## Current understanding (as of 2026-10-03)
 
-- **Where we are:** M2 (the tech spec) is done and the backlog is decomposed. No code exists yet. The App Store Connect record name is "OpenMoji Family" (OQ-5, resolved). Start with `bd ready --exclude-type=epic`. The first code task is the OpenMojiCore package skeleton (`e4h`). M1 waits on OQ-7 (org verification), which only the user can check.
-- **How the backlog is shaped, and why.** There are 7 capability epics, cut as vertical slices (the user chose this). Each one owns its Core logic and its UI, so it can be verified on the device by itself. Milestones M1–M5 are labels (`m1`–`m5`), not epics, because one capability spans several milestones. Each open question is a `decision` bead that blocks only the tasks it governs. That keeps `bd ready` honest, so don't wire a decision to a whole epic. Tasks only the user can do (Apple portal, ASC record, inviting testers) carry the label `human`. Don't hand those to subagents.
-- **The M3 probe (`25h`) is load-bearing.** It answers OQ-10 (`MSStickerView` gestures vs. a context menu) and OQ-11 (App Group URLs) on a real iPad. Those answers gate the library grid, delete and preview. If the probe is skipped, the M4 UI is built on guesses.
-- **The PRD is a Claude Doc, not a repo file.** Read it with the Claude Docs connector (`read` the project, then the prose node). The only `projection` value is `"outline"`; leave it out to get the full text. Edit with targeted `find`/`replace` operations. The PRD was corrected this session (model facts, NFR-1, NFR-8, REL-4, REL-9, OQ-2, OQ-3).
-- **Sagelet is a reference, not a template.** Its TestFlight lane runs on the user's Mac: `make testflight` → `op run` → `xcodebuild archive` / `-exportArchive destination=upload`, with manual signing from a dedicated keychain. Its CI only runs simulator tests. The user wants OpenMoji's lane *reimplemented independently* with no copied files. Sagelet has no tests in the lane, no secret scan and no expiry handling; OpenMoji adds all three.
-- **The release design follows from the user's rule: publish locally, keep no secrets in GitHub.** That rule shaped the REL-9 expiry alert. CI can't call App Store Connect without a key, so the lane pushes an annotated `build-N` tag after the build becomes VALID, and a scheduled workflow computes expiry as the tag date plus 90 days. That trade-off is in ADR-0010. Don't "improve" it by adding an ASC key to GitHub.
+- **Where we are:** M3/M4 code is largely built and merged (PRs #7–#47): OpenMojiCore (errors, processing, library store, OpenAI client + key check, CredentialStore, StyleTemplate, GenerationService), the extension's AppModel, Settings, Compose, Generating and Error screens, CI, and the full local release lane (`make testflight` through the `build-N` tag, `make testflight-status`, expiry alert, 1Password service-account auth). Everything agent-doable is done. What's left is gated on the user: Apple setup (`t2m`) → first upload (`i5k`), the iPad probes (`25h`, which answer OQ-10/OQ-11 and unblock Preview/Keep, the library grid and delete), and a handful of small decisions.
+- **How the backlog is shaped, and why.** 7 capability epics cut as vertical slices; milestones are labels `m1`–`m5`; each open question is a `decision` bead that blocks only the tasks it governs (don't wire a decision to a whole epic). `human`-labelled tasks are the user's.
+- **M1 is settled and cheap.** All three qualities passed 20/20; medium ≈ $0.014 and ~10 s per sticker, so OQ-4 = medium and NFR-8's old "< $0.05" is replaced. The §9 template needed no change. Slots 15–17 used stand-in prompts (`6dr.2` re-runs the real ones).
+- **The PRD is a Claude Doc, not a repo file.** Read with the Docs connector; edit with targeted `find`/`replace`. Resolving an open question means four places: the bead (`Ratified: …`), `docs/open-questions.md`, any tech-spec text that says "open", and the PRD line if one exists (OQ-6+ mostly have none).
+- **The release design follows from "publish locally, no GitHub secrets".** CI can't see App Store Connect, so the lane pushes an annotated `build-N` tag only after VALID and a scheduled workflow computes expiry from the tag date (ADR-0010). Don't "improve" this with an ASC key in GitHub.
+- **Toolchain floor is deliberate.** `swift-tools-version: 6.2` is the lowest that knows `.iOS(.v26)` and lets CI use stock `macos-latest` (Xcode 26). A worker first picked 6.4 (the local toolchain), which forced a preview runner — the user chose 6.2 + `macos-latest` instead. Sagelet's CI was the reference (pinned SwiftFormat, PR-only lint, simulator by UDID); its Linux job doesn't transfer because Core uses Apple-only frameworks.
 
 ## Lessons & gotchas
 
-- **PRD and model facts go stale fast; check them against official docs.** The PRD said GPT Image 2 was deprecated (false) and quoted a per-image price OpenAI doesn't publish for 2.5. Verified on 2026-10-02:
-  - The model IDs are `gpt-image-2.5-flare` / `-sunburst`, with snapshots dated `-2026-09-08`.
-  - Moderation refusals are `image_generation_user_error` / `moderation_blocked`.
-  - Billing 429s have their own codes (`project_spend_limit_exceeded` etc.), separate from rate-limit 429s.
-  - `GET /v1/models` needs the "List models: Read" permission, which is why the key gets that scope (ADR-0009).
-- **OpenAI's smallest image is about 810², so 618 px can't be requested.** Downscaling on the device is unavoidable (ADR-0004).
-- **Passing one provisioning profile on the command line signs every target with it.** Sagelet passes a single `PROVISIONING_PROFILE_SPECIFIER`; doing that here would break the extension. Profiles go per target in `project.yml` (ADR-0011).
-- **`bd init` commits straight to local `main`.** It's a one-off, but watch for it if the repo is ever re-initialized.
-- **Until `ci.yml` lands (`q4o`), PRs have no checks.** "Watch to green" has nothing to watch. Re-read the diff yourself, then merge. Once CI exists, the release-lane preflight needs a check run on every `main` commit, so don't add `paths-ignore`.
-- **Local hooks guard token use.** A Bash `cat` of a file over 350 lines is blocked; use `Read` with `limit`/`offset` or the bulk-reader. A new file over 100 lines is bounced to the code-writer once; re-sending the same Write goes through when the content is novel reasoning, such as a bd graph plan.
-- **`bd lint` has a template per type.** Decisions need `## Decision`, `## Rationale` and `## Alternatives Considered`; `spike` issues need `## Goal` and `## Findings`. Build the backlog with one `bd create --graph` plan, written by a small Python generator in the scratchpad, and run it with `--dry-run` first.
-- **The git-policy ambiguity is settled.** The beads block in CLAUDE.md defaults to "conservative", which conflicted with the user's global "landing is the ask" rule. The repo now opts into Team-maintainer explicitly.
+- **The agent sandbox won't let a worktree agent source `.env`.** Paid or secret-needing runs (the M1 spike) are handed to the user as a `! …` command; don't route around the refusal, and don't run it "for" the agent either. The worker should still build and test the script with no spend (loopback stub, request cap, ledger) so the user's single run is safe.
+- **Copy artifacts out of an agent worktree before removing it.** The M1 raw PNGs were lost with the worktree (only the contact sheets survived), which forced the alpha-snap measurement onto synthetic data.
+- **Process-wide test stubs leak across tests on slow runners.** The URLProtocol flake passed 100/100 locally and still failed on GitHub; a "drain" wait didn't fix it, per-test stub state keyed by a request header did. Prove flake fixes with several CI re-runs, not local loops.
+- **Simulator Keychain tests need ad-hoc signing** (`CODE_SIGN_IDENTITY=-`); unsigned hosts get -34018. The shared access group's prefix is resolved at runtime via a non-secret probe item, since iOS has no public entitlement API.
+- **Parallel workers collide on a few shared files** (`project.yml`, `RootView.swift`, `release.sh`/Makefile, `.gitignore`). Sequencing with `bd dep add` worked well; `gh pr update-branch` reports conflicts — check its output, and re-key CI waiters on the new head SHA.
+- **CI flakes seen so far:** a corrupted restored DerivedData cache (cache since removed) and a GitHub 502 downloading the pinned SwiftFormat (re-run once).
+- **A SwiftUI `TextField` bound straight to the model doesn't reflect model-side truncation**; use a local `@State` draft synced both ways (ComposeView). Preview's editable prompt (`ijf`) needs the same.
+- **gitleaks scans all refs**, so a stale remote-tracking ref to a deliberately leaky probe branch trips the release lane; `git fetch --prune` fixed it. Build fake keys at runtime in tests.
+- **The chore tier (Haiku `beads-chore`) went 4/4** on fully specified small tasks with no escalations or hidden defects; judgment-heavy work still goes to `beads-worker`.
+- **OpenAI facts (verified 2026-10-02):** model alias `gpt-image-2.5-flare`; smallest image ~810², so on-device downscaling is unavoidable; billing 429s have their own codes; `usage` is always returned; the org is verified.
 
 ## Open questions
 
-The canonical list is `docs/open-questions.md`, mirrored as `open-question` decision beads. The ones most likely to bite next:
-- Is the OpenAI org verified (OQ-7, `q2h`)? M1 fails without it.
-- Do `MSStickerView` peel-and-drag and a long-press context menu coexist (OQ-10)? This decides the delete UX.
-- Does `MSSticker` load from App Group URLs (OQ-11)?
-- 11 ADRs are still marked "Proposed", awaiting review with the spec PR, even though that PR merged. Nobody has decided whether merging the spec counts as accepting them. Ask the user before flipping their status.
+- 13 ADRs are still "Proposed" (incl. the new ADR-0016). Nobody has decided whether merging counts as acceptance — ask the user before flipping statuses.
+- OQ-10/OQ-11 (sticker gestures, App Group URLs) need the iPad probe (`25h`).
+- OQ-6 (is the key check free / 404 for an unusable model), OQ-13 (does Family auto-distribution pick up CLI uploads — `ensure-in-group`'s log answers it on the first upload), OQ-14 (cert/profile expiry alerts), and `pxc.1` (guarding the expiry cron against GitHub's 60-day inactivity disable).
+- Settings/Error UX choices the user hasn't reacted to yet: spec-silent copy, Clear-with-confirmation, no `keyNotPermitted` Settings button.
