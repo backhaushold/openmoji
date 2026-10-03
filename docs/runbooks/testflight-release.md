@@ -8,12 +8,12 @@ short routine-release section. Design lives in the
 [ADR-0015](../adr/0015-app-store-connect-api-tooling.md); this file is the
 "how", the spec is the "why".
 
-> **Status.** The one-time setup (section 2) is actionable now. The lane itself
-> (`make testflight`, `scripts/release.sh`, `scripts/op-run.sh`,
-> `scripts/asc.swift`, `release/ExportOptions.plist`, `release/.env.example`)
-> does not exist yet; it lands with beads `openmoji-4kq` and `openmoji-2pq`.
-> Section 4 describes it **as specified in §12.3**. When those beads land,
-> reconcile section 4 with what was built.
+> **Status.** The one-time setup (section 2) is actionable now. The lane through
+> the upload (`make testflight`, `scripts/op-run.sh`, `scripts/release.sh`,
+> `release/ExportOptions.plist`, `release/.env.example`; §12.3 steps 0 to 7) is
+> built (bead `openmoji-4kq`). The post-upload steps 8 and 9, `scripts/asc.swift`
+> and `make testflight-status` are not built yet (bead `openmoji-2pq`); section 4
+> marks them.
 
 ## 1. Ground rules
 
@@ -184,7 +184,7 @@ KC_PW_REF="op://OpenMoji/openmoji-signing-keychain/password"
    ```
 
    The `op://` reference above is the name this runbook fixes for the item.
-   `release/.env.example` (lane bead) must reference the same path.
+   `release/.env.example` references the same path.
 
 2. **Create the keychain** with that password. `security` warns that `-p` is
    "insecure" because the value is visible in the process list for an instant;
@@ -379,17 +379,17 @@ Renewal, names unchanged so no repo edit is needed beyond this table:
 
 ## 4. Routine release
 
-> Described as specified in [§12.3](../tech-spec.md#123-make-testflight-sequence-scriptsreleasesh-via-scriptsop-runsh)
-> and [§12.6](../tech-spec.md#126-ci-and-expiry-automation-github-actions). The
-> scripts are not written yet; this section adds no commands or flags beyond
-> the spec.
+> As built for [§12.3](../tech-spec.md#123-make-testflight-sequence-scriptsreleasesh-via-scriptsop-runsh)
+> steps 0 to 7. Steps 8 and 9 and `make testflight-status`
+> ([§12.6](../tech-spec.md#126-ci-and-expiry-automation-github-actions)) are not
+> built yet (bead `openmoji-2pq`) and are marked below.
 
 On the release Mac, from a clean checkout of `main` that equals `origin/main`
 with CI green on that commit:
 
 ```bash
-make testflight           # archive, upload, distribute, tag
-make testflight-status    # newest VALID build's exact expiry and processing state
+make testflight           # steps 0-7 today: preflight to upload. Steps 8-9 (distribute, tag) after openmoji-2pq
+make testflight-status    # not built yet (openmoji-2pq): newest VALID build's exact expiry and processing state
 ```
 
 Bump `MARKETING_VERSION` in `project.yml` by hand first if the user-visible
@@ -397,32 +397,71 @@ version should change; the build number is injected by the lane
 (`git rev-list --count HEAD`, REL-3).
 
 `make testflight` runs `scripts/release.sh` through `scripts/op-run.sh`, which
-injects the 1Password secrets (approve in the 1Password app if it asks). In
-order:
+runs `op run --env-file release/.env.example` so 1Password injects four
+variables for that one process (approve in the 1Password app if it asks):
+`SIGNING_KEYCHAIN_PASSWORD` (`op://OpenMoji/openmoji-signing-keychain/password`,
+2.3) and `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_PRIVATE_KEY_BASE64` (from
+`op://OpenMoji/testflight-asc-api-key/`, 2.5). The signing keychain path is not
+secret and defaults to `~/Library/Keychains/openmoji-signing.keychain-db`; set
+`SIGNING_KEYCHAIN_PATH` to override it (no whitespace). In order:
 
-0. Puts `/usr/bin` first on `PATH`; stops on any error.
-1. **Preflight:** clean tree, on `main`, `HEAD == origin/main`, CI green on
-   `HEAD`, `xcode-select` points at Xcode.app, required env present.
-2. **Secret scan** with gitleaks (REL-6).
+0. Puts `/usr/bin` first on `PATH`; stops on any error; a trap cleans up on
+   every exit path.
+1. **Preflight.** The first check that fails stops the lane with a message
+   saying what to fix, before anything is signed:
+   - the tools exist (`gh`, `gitleaks`, `xcodegen`, plus Xcode's own), the four
+     variables are set and resolved, `release/ExportOptions.plist` and the signing
+     keychain file exist, and `xcode-select -p` points at an `Xcode*.app`;
+   - the tree is clean, the branch is `main`, and `HEAD` equals `origin/main`
+     after a `git fetch origin main` (so the commit count is monotonic);
+   - CI is green on `HEAD`: `gh api` lists the check runs for that commit; the
+     `verify` check run must exist and every check run must be completed and not
+     failed. Right after merging, wait for the push-to-`main` CI run to finish
+     ("CI is still running").
+2. **Secret scan:** `gitleaks detect --redact --no-banner` (REL-6). It scans the
+   history of **every ref this clone has**, remote-tracking branches included,
+   not just `main`, so a leaked or probe commit on any branch fails the lane.
 3. **Generate** the project with `xcodegen generate`.
 4. **Tests:** `swift test` for `OpenMojiCore` (REL-7).
-5. **Keychain:** unlock `openmoji-signing.keychain-db` and put it first in the
-   search list (restored on exit).
-6. **Archive** `Release`, `generic/platform=iOS`, with the build number and
-   `--keychain` flag; profiles come per target from `project.yml`. Then an
-   artifact scan for `sk-` keys in the `.xcarchive`.
-7. **Upload** with `xcodebuild -exportArchive` using
-   `release/ExportOptions.plist` and the ASC key from 1Password (REL-1, REL-4).
-8. **Post-upload** via `scripts/asc.swift`: wait for processing to reach
-   VALID, set "What to Test" from `git log` since the previous `build-*` tag
-   (REL-8), and make sure the build is in the `Family` group (REL-5).
-9. **Tag** the commit `build-<N>` (annotated) and push it. That tag's date is
-   what the CI expiry alert reads.
+5. **Keychain:** unlock `openmoji-signing.keychain-db`, check that it holds an
+   `Apple Distribution` identity, and put it first in the user keychain search
+   list. The original list is restored on exit.
+6. **Archive:** `xcodebuild archive -project OpenMoji.xcodeproj -scheme OpenMoji
+   -configuration Release -destination generic/platform=iOS -archivePath
+   build/release/OpenMoji-<N>.xcarchive CURRENT_PROJECT_VERSION=<N>
+   OTHER_CODE_SIGN_FLAGS="--keychain <signing keychain>"`, where `<N>` is
+   `git rev-list --count HEAD`. Nothing else is on the command line; profiles
+   come per target from `project.yml`. **6b:** then `grep -rlaE
+   'sk-[A-Za-z0-9_-]{20,}'` over the whole `.xcarchive`, binaries included. Any
+   hit fails the lane before upload; the message lists file names, never the
+   match.
+7. **Upload:** decode the ASC key into a `0600` `AuthKey_<KEY_ID>.p8` in a
+   private temporary directory, run `xcodebuild -exportArchive` with
+   `release/ExportOptions.plist`, `-exportPath build/release/export-<N>` (the
+   packaging logs) and `-authenticationKeyPath/-ID/-IssuerID` (REL-1, REL-4),
+   and delete the temporary directory straight afterwards. It is also deleted
+   on failure, Ctrl-C, `SIGTERM` and `SIGHUP`.
+8. **Post-upload** via `scripts/asc.swift` _(not built yet, `openmoji-2pq`)_:
+   wait for processing to reach VALID, set "What to Test" from `git log` since
+   the previous `build-*` tag (REL-8), and make sure the build is in the
+   `Family` group (REL-5). Until then, do these by hand in App Store Connect.
+9. **Tag** _(not built yet, `openmoji-2pq`)_ the commit `build-<N>` (annotated)
+   and push it. That tag's date is what the CI expiry alert reads, so until step
+   9 exists there is no alert for builds uploaded by this lane.
 
-Steps 1 to 4 fail before anything is signed. Archives are kept at
-`build/release/OpenMoji-<N>.xcarchive` (keep them for dSYMs). No export
-compliance prompt is expected; the build declares HTTPS-only encryption
-([§3](../tech-spec.md#3-targets-modules-and-entitlements)).
+Nothing is signed before step 6; steps 1 to 4 fail before the keychain is even
+touched, and a failure prints which step it was in and whether anything was
+signed. Archives are kept at `build/release/OpenMoji-<N>.xcarchive` (keep them
+for dSYMs); a re-run on the same commit replaces that archive. If an earlier
+run's upload was accepted by Apple, a re-run on the same commit reuses its build
+number and App Store Connect rejects it as a duplicate; land a new commit
+first. No export compliance prompt is expected; the build declares
+HTTPS-only encryption ([§3](../tech-spec.md#3-targets-modules-and-entitlements)).
+
+`make release-test` (`scripts/test-release.sh`) exercises the lane scripts with
+every external tool stubbed: each preflight failure, the `sk-` scan, and
+cleanup of the temporary key and the keychain search list on success, failure
+and signals. It signs and uploads nothing; run it after editing the scripts.
 
 About two weeks before a build's 90 days are up, the scheduled workflow opens a
 GitHub issue labelled `testflight-expiry`. Run `make testflight-status` to see
@@ -502,5 +541,9 @@ The lane's preflight checks `xcode-select -p` and stops before signing.
 Command syntax checked on 2026-10-02 against `man security`,
 `op item create --help` and `xcodebuild -help`; the `security cms` and
 `openssl x509` expiry commands were run against an installed profile and
-certificate. ASC steps follow Apple's linked help pages. The reference project's
+certificate. The lane's own commands (section 4) were checked the same day
+against `xcodebuild -help` (archive and export flags, export option keys),
+`man security` (`unlock-keychain`, `list-keychains`), `op run --help`,
+`gitleaks detect --help` and `gh api --help`, and its `gh api` check-run query
+was run read-only against `origin/main`. ASC steps follow Apple's linked help pages. The reference project's
 runbook was read for pitfalls only; nothing is copied.
