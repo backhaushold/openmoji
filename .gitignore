@@ -13,6 +13,16 @@
 # XcodeGen (project.yml is the source of truth, ADR-0001)
 *.xcodeproj/
 
+# Release lane (tech spec 12.3): archives, exports and logs live in build/release.
+# Nothing key-shaped or signing-related is ever committed; release/.env.example
+# holds only op:// references and stays tracked.
+/build/
+*.xcarchive
+*.ipa
+*.p8
+*.p12
+*.mobileprovision
+
 # Local secrets (1Password service-account token for op); never commit
 .env
 

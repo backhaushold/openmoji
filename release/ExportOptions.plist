@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Tech spec 12.4. Used by `xcodebuild -exportArchive` in scripts/release.sh.
+  Profile names are exact and must match project.yml (ADR-0011, tech spec 12.5)
+  and the profiles installed per the runbook (docs/runbooks/testflight-release.md 2.2).
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>upload</string>
+	<key>teamID</key>
+	<string>AB5S94XWRQ</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<key>signingCertificate</key>
+	<string>Apple Distribution</string>
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.backhaushold.openmoji</key>
+		<string>OpenMoji App Store</string>
+		<key>com.backhaushold.openmoji.MessagesExtension</key>
+		<string>OpenMoji Messages App Store</string>
+	</dict>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>testFlightInternalTestingOnly</key>
+	<true/>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>
