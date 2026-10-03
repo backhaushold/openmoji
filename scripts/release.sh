@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# OpenMoji release lane: tech spec 12.3 steps 0-7, ADR-0010 / 0011 / 0012.
+# OpenMoji release lane: tech spec 12.3 steps 0-9, ADR-0010 / 0011 / 0012 / 0015.
 # Run it through `make testflight`, which wraps it in scripts/op-run.sh so the
 # 1Password secrets from release/.env.example are in the environment.
 #
@@ -16,10 +16,16 @@
 #   6. Archive           build number = commit count (REL-3)
 #   6b. Artifact scan    fail if the .xcarchive contains an sk- key
 #   7. Upload            xcodebuild -exportArchive, destination=upload (REL-1, REL-4)
+#   8. Post-upload       scripts/asc.swift: wait for VALID, set What to Test from
+#                        git log since the previous build-* tag (REL-8), make
+#                        sure the build is in the Family group (REL-5)
+#   9. Tag               annotated build-N, pushed ONLY after step 8 succeeded
+#                        (its date is what the CI expiry alert reads, REL-9)
 #
-# Steps 8 (post-upload: wait for VALID, What to Test, Family group) and 9 (the
-# annotated build-N tag) are not here: they are bead openmoji-2pq, which adds
-# them at the marked place at the end of main().
+# Step 8 needs ASC_ISSUER_ID, ASC_KEY_ID and ASC_PRIVATE_KEY_BASE64 in the
+# environment (the same variables step 7 uses); asc.swift decodes the key in
+# memory, so no .p8 file is involved. Optional, not secrets: ASC_WAIT_TIMEOUT
+# (seconds to wait for processing, default 2700) and ASC_POLL_INTERVAL (default 30).
 #
 # The file can be sourced without running anything (the last lines only call
 # main when it is executed), so scripts/test-release.sh can drive the same
@@ -28,6 +34,9 @@
 # Step 0. Apple's rsync first: Homebrew's breaks `xcodebuild -exportArchive`.
 export PATH="/usr/bin:$PATH"
 set -euo pipefail
+# asc.swift's test hooks (loopback stub server) are for scripts/test-asc.sh only;
+# the lane never uses them.
+unset ASC_TEST_BASE_URL ASC_TEST_RETRY_DELAY
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
@@ -36,6 +45,13 @@ EXPORT_OPTIONS="release/ExportOptions.plist"
 OUTPUT_DIR="build/release" # git-ignored; archives stay here for dSYMs
 # Tech spec 12.3 step 6b. Only file names are printed, never the match.
 KEY_PATTERN='sk-[A-Za-z0-9_-]{20,}'
+# Tech spec 12.3 steps 8-9 (ADR-0015).
+ASC_SCRIPT="scripts/asc.swift"
+FAMILY_GROUP="Family" # the internal TestFlight group; its name is exact (runbook 2.4)
+ASC_WAIT_TIMEOUT="${ASC_WAIT_TIMEOUT:-2700}"
+ASC_POLL_INTERVAL="${ASC_POLL_INTERVAL:-30}"
+# With no earlier build-* tag (the first upload) the notes list this many recent commits.
+FIRST_BUILD_NOTES_LIMIT=20
 
 # Injected from 1Password by scripts/op-run.sh (release/.env.example).
 REQUIRED_ENV=(SIGNING_KEYCHAIN_PASSWORD ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64)
@@ -48,6 +64,7 @@ SIGNING_KEYCHAIN_PATH="${SIGNING_KEYCHAIN_PATH:-$HOME/Library/Keychains/openmoji
 # State read by cleanup().
 CURRENT_STEP="startup"
 SIGNING_STARTED=0
+UPLOADED=0 # set once App Store Connect accepted the upload (step 7)
 KEYCHAINS_SAVED=0
 ORIGINAL_KEYCHAINS=()
 WORK_DIR="" # holds the temporary ASC .p8; removed on every exit path
@@ -97,6 +114,9 @@ cleanup() {
     if [ "$SIGNING_STARTED" -eq 0 ]; then
       printf ' Nothing was signed or uploaded.' >&2
     fi
+    if [ "$UPLOADED" -eq 1 ]; then
+      printf ' Build %s WAS uploaded to App Store Connect: finish by hand (runbook section 4, "If the lane fails after the upload").' "$BUILD_NUMBER" >&2
+    fi
     if [ -n "$ARCHIVE_PATH" ] && [ -d "$ARCHIVE_PATH" ]; then
       printf ' Archive kept at %s.' "$ARCHIVE_PATH" >&2
     fi
@@ -135,6 +155,15 @@ preflight_env() {
   case "$ASC_KEY_ID" in
     *[!A-Za-z0-9]*) die "ASC_KEY_ID contains unexpected characters; expected the 10-character key ID." ;;
   esac
+  # Checked now so a typo fails before anything is signed, not after the upload.
+  local setting
+  for setting in ASC_WAIT_TIMEOUT ASC_POLL_INTERVAL; do
+    value="${!setting}"
+    case "$value" in
+      '' | *[!0-9.]* | *.*.* | .* | *.) die "$setting must be a positive number of seconds, got '$value'." ;;
+    esac
+    [ -n "${value//[0.]/}" ] || die "$setting must be a positive number of seconds, got '$value'."
+  done
 }
 
 preflight_files() {
@@ -351,6 +380,77 @@ step_upload() {
     || rc=$?
   remove_asc_key # as soon as it is not needed; cleanup() covers every other path
   [ "$rc" -eq 0 ] || die "exportArchive/upload failed (exit $rc); export logs are in $export_path"
+  UPLOADED=1
+}
+
+# ------------------------------------------------ 8. post-upload, 9. tag --------
+
+# scripts/asc.swift with the ASC_* variables already in the environment.
+asc() { swift "$REPO_ROOT/$ASC_SCRIPT" "$@"; }
+
+# The newest earlier build tag: the highest build-<number> below this build's
+# number that is an ancestor of HEAD. Prints nothing when there is none (the
+# first upload). Never call it for its exit status.
+previous_build_tag() {
+  local tag number best="" best_number=-1
+  while IFS= read -r tag; do
+    number="${tag#build-}"
+    case "$number" in
+      '' | *[!0-9]*) continue ;;
+    esac
+    [ "${#number}" -le 9 ] || continue
+    [ "$((10#$number))" -lt "$BUILD_NUMBER" ] || continue
+    [ "$((10#$number))" -gt "$best_number" ] || continue
+    git merge-base --is-ancestor "refs/tags/$tag" HEAD 2>/dev/null || continue
+    best="$tag"
+    best_number=$((10#$number))
+  done < <(git tag --list 'build-*')
+  printf '%s' "$best"
+}
+
+# The "What to Test" text (REL-8): one "- subject" line per commit since the
+# previous build tag, or, for the first build, a header and the most recent
+# FIRST_BUILD_NOTES_LIMIT commits. $1 is the previous tag, empty if none.
+whats_new_text() {
+  if [ -n "$1" ]; then
+    git log "$1..HEAD" --format='- %s'
+  else
+    printf 'First TestFlight build. Most recent changes:\n'
+    git log -n "$FIRST_BUILD_NOTES_LIMIT" --format='- %s' HEAD
+  fi
+}
+
+step_post_upload() {
+  step "8. Post-upload (wait for VALID, What to Test, $FAMILY_GROUP group)"
+  local previous notes hint
+  hint="Build $BUILD_NUMBER is uploaded but NOT tagged. See runbook section 4, \"If the lane fails after the upload\"."
+  previous=$(previous_build_tag)
+  if [ -n "$previous" ]; then
+    log "What to Test: commits since $previous (REL-8)"
+  else
+    log "What to Test: no earlier build-* tag, so the $FIRST_BUILD_NOTES_LIMIT most recent commits (first build)"
+  fi
+  notes=$(whats_new_text "$previous")
+
+  asc wait-for-build "$BUILD_NUMBER" --timeout "$ASC_WAIT_TIMEOUT" --interval "$ASC_POLL_INTERVAL" \
+    || die "build $BUILD_NUMBER did not become VALID. $hint"
+  asc set-whats-new "$BUILD_NUMBER" "$notes" \
+    || die "build $BUILD_NUMBER is VALID but its What to Test text could not be set. $hint"
+  asc ensure-in-group "$BUILD_NUMBER" "$FAMILY_GROUP" \
+    || die "build $BUILD_NUMBER is VALID but could not be put in the $FAMILY_GROUP group. $hint"
+}
+
+# Only reached once step 8 succeeded, so a tag always means a VALID, distributed
+# build. Annotated, so its date is the upload date the expiry alert reads.
+step_tag() {
+  local tag="build-$BUILD_NUMBER"
+  step "9. Tag ($tag, annotated, pushed now that the build is VALID)"
+  if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    die "tag $tag already exists locally; build $BUILD_NUMBER is VALID and in $FAMILY_GROUP. Check it points at the right commit, then: git push origin refs/tags/$tag"
+  fi
+  git tag -a "$tag" -m "TestFlight upload $(date -u +%FT%TZ)"
+  git push origin "refs/tags/$tag" \
+    || die "build $BUILD_NUMBER is VALID and in $FAMILY_GROUP, but pushing the tag failed. The tag exists locally; run: git push origin refs/tags/$tag (the CI expiry alert reads it)"
 }
 
 # ------------------------------------------------------------- main ----------
@@ -370,12 +470,11 @@ main() {
   step_archive
   step_scan_archive
   step_upload
+  step_post_upload
+  step_tag
 
-  # openmoji-2pq adds steps 8 and 9 here: scripts/asc.swift wait-for-build,
-  # set-whats-new, ensure-in-group, then the annotated build-$BUILD_NUMBER tag,
-  # pushed only after the build is VALID (ADR-0010, tech spec 12.3).
   CURRENT_STEP="done"
-  log "build $BUILD_NUMBER uploaded. NOT yet automated (openmoji-2pq): wait for processing, What to Test, Family group, build-$BUILD_NUMBER tag."
+  log "build $BUILD_NUMBER is VALID, has What to Test notes, is in the $FAMILY_GROUP group and is tagged build-$BUILD_NUMBER."
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
