@@ -12,3 +12,9 @@
 
 # XcodeGen (project.yml is the source of truth, ADR-0001)
 *.xcodeproj/
+
+# Local secrets (1Password service-account token for op); never commit
+.env
+
+# Agent worktrees
+.claude/worktrees/
