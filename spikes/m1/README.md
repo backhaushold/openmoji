@@ -12,6 +12,7 @@ Nothing here is part of the app, `OpenMojiCore` or CI. Foundation, ImageIO and C
 | Path | What |
 |---|---|
 | `spike.swift` | The script: `run`, `render`, `summary`, `selftest` |
+| `alpha-snap.swift` | openmoji-ufo: would snapping alpha 250 to 254 up to 255 shrink the sticker PNG? `dir`, `synthetic`, `sheets` modes; see the findings doc |
 | `op.env` | One line, `OPENAI_API_KEY=op://...`, a 1Password reference (no secret) |
 | `results/requests.jsonl` | Ledger, one line per API request: status, latency, `usage`, cost, error. Also enforces the 75-request cap |
 | `results/analysis-<template>.csv` | Programmatic transparency, framing and edge checks per output |
