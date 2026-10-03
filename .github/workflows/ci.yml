@@ -2,7 +2,7 @@
 # repo has no Actions secrets (only the per-run GITHUB_TOKEN, read-only).
 #
 # No `paths-ignore`: the release lane's preflight needs a check run on every
-# main commit. Docs-only changes take a fast path that skips steps 4-5
+# main commit. Docs-only changes take a fast path that skips steps 5-6
 # (xcodegen and the simulator tests) but still produce the `verify` check run.
 name: CI
 
@@ -76,7 +76,7 @@ jobs:
 
       - name: Install tools
         run: |
-          brew install gitleaks swiftlint
+          brew install gitleaks swiftlint shellcheck
           mkdir -p "$RUNNER_TEMP/sfbin"
           curl -fsSL -o "$RUNNER_TEMP/swiftformat.zip" \
             "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat.zip"
@@ -111,11 +111,21 @@ jobs:
         if: github.event_name == 'pull_request'
         run: swiftlint lint --strict
 
-      # 3. OpenMojiCore unit tests on the Mac host.
+      # 3. Keep the release lane scripts from rotting. Both steps run on every
+      # event, docs-only included: together they take about half a minute, and
+      # release-test stubs every external tool (no signing, no network, no
+      # 1Password, no App Store Connect), so it needs no secrets.
+      - name: shellcheck (scripts)
+        run: shellcheck scripts/*.sh
+
+      - name: make release-test (release lane self-test)
+        run: make release-test
+
+      # 4. OpenMojiCore unit tests on the Mac host.
       - name: swift test (OpenMojiCore)
         run: swift test --package-path Packages/OpenMojiCore
 
-      # 4-5. Skipped for docs-only changes.
+      # 5-6. Skipped for docs-only changes.
       - name: xcodegen generate
         if: steps.scope.outputs.docs_only != 'true'
         run: |
