@@ -89,4 +89,28 @@ app and release lane.
 
 ## Build & Test
 
-_Not yet — added in M3 when `project.yml`, `Packages/OpenMojiCore` and the release lane exist (tech spec §3, §11, §12)._
+Toolchain: Xcode 26+ (Swift ≥ 6.2), `xcodegen`, SwiftFormat **0.63.0** (CI pins it; check `swiftformat --version`),
+`swiftlint`, `gitleaks`, `shellcheck`. Setup and the full picture are in `README.md`.
+
+Before opening a PR, run what CI runs (`.github/workflows/ci.yml`):
+
+```bash
+gitleaks detect --redact --no-banner
+swiftformat --lint .
+swiftlint lint --strict
+shellcheck scripts/*.sh
+make release-test                                  # lane self-test, all external tools stubbed
+swift test --package-path Packages/OpenMojiCore
+xcodegen generate                                  # OpenMoji.xcodeproj is git-ignored; rerun after editing project.yml or adding/removing files
+xcrun simctl list devices available | grep iPad    # pick a UDID
+xcodebuild test -project OpenMoji.xcodeproj -scheme OpenMojiMessagesTests \
+  -destination "id=<UDID>" CODE_SIGN_IDENTITY=-
+```
+
+- Keep `CODE_SIGN_IDENTITY=-` on the simulator test run. `CODE_SIGNING_ALLOWED=NO` leaves the host app without its
+  Keychain entitlement and the Keychain test fails with `errSecMissingEntitlement` (-34018).
+- Docs-only changes skip `xcodegen` and `xcodebuild` in CI but still run everything above them, so run at least those.
+- UI-free app code goes in `MessagesExtension/Model/` (it is compiled into the test bundle); views stay out of it.
+- Do **not** run `make testflight`, `make testflight-status` or `make op-check`: they are for the release Mac and need
+  1Password and App Store Connect secrets. `make release-test` is the safe one. Never read or open `.env`
+  (the 1Password service-account token). See `docs/runbooks/testflight-release.md`.
