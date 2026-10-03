@@ -34,7 +34,7 @@ These do not change any locked decision, but the PRD text should be corrected.
 | # | Assumption | If wrong |
 |---|---|---|
 | A1 | The OpenAI project key is granted **Model capabilities: Request** and **List models: Read** (needed for FR-4 validation, [ADR-0009](adr/0009-key-validation.md)) | FR-4 reports "key lacks permission"; family admin adds the scope |
-| A2 | The OpenAI organization is verified for GPT Image 2.5 | Every generation returns an access error; mapped to "key not permitted" with the API message |
+| A2 | The OpenAI organization is verified for GPT Image 2.5 (confirmed 2026-10-02, OQ-7) | Every generation returns an access error; mapped to "key not permitted" with the API message |
 | A3 | Text entry works in the expanded Messages-context view on iPadOS 26 (Apple documents expanded as the place for text input) | Verified in M3 shell build before feature work |
 | A4 | `MSStickerView` supports tap-to-insert and peel-and-drag in both compact and expanded styles (docs describe peel-and-drag but not per-style) | Fallback: `activeConversation.insert(_:)` on tap; verified in M3 |
 | A5 | `MSSticker` accepts file URLs inside the App Group container | Fallback: copy to the extension's temp dir before creating the sticker; verified in M3 |
@@ -340,6 +340,7 @@ protocol CredentialStore: Sendable {
 }
 ```
 
+- **Access group at runtime.** iOS has no public API to read an entitlement, so `KeychainCredentialStore` asks the Keychain which group an item with no explicit group lands in (the first `keychain-access-groups` entry, already resolved), keeps its prefix and appends `.com.backhaushold.openmoji.shared`. A non-secret probe item (service `com.backhaushold.openmoji.access-group-probe`) is created once for this and left in place.
 - **Entry (FR-1).** Settings sheet reachable from the expanded view: one `SecureField`, Save, Clear. Input is trimmed of whitespace and must start with `sk-`; otherwise "That doesn't look like an OpenAI key" (no network call).
 - **Validate-then-save (FR-4).** §5.4.
 - **Display (FR-3).** After save, the field is replaced by `•••• last4` computed from `load()` at display time. The full key is never placed back into a text field.
@@ -510,7 +511,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
   2. SwiftFormat and SwiftLint lint.
   3. `swift test` (OpenMojiCore).
   4. `xcodegen generate`.
-  5. `xcodebuild test` for `OpenMojiMessagesTests` on an iPad simulator with `CODE_SIGNING_ALLOWED=NO`.
+  5. `xcodebuild test` for `OpenMojiMessagesTests` on an iPad simulator with `CODE_SIGN_IDENTITY=-` (ad-hoc signing, so the host app carries its keychain entitlement; unsigned builds fail the Keychain test with `errSecMissingEntitlement`).
 
   DerivedData cache keyed on `project.yml` and `**/*.swift`. A `paths-ignore` for docs-only changes is **not** used, because the lane's preflight needs a check run on every `main` commit. Instead a cheap docs-only fast path skips steps 4–5.
 - **`testflight-expiry.yml`** (REL-9, alert only): `schedule: cron "0 14 * * *"` plus `workflow_dispatch` (input `threshold_days`, default 14), `ubuntu-latest`, `permissions: contents: read, issues: write`.
