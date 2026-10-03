@@ -273,6 +273,8 @@ Decoded fields: `data[0].b64_json` (required). `usage` is decoded as **optional*
 | Other HTTP 4xx | `.api(status, apiMessage)` | "Something went wrong: <API message>" | — |
 | Missing `b64_json` / bad base64 / ImageIO failure | `.processingFailed` | "Couldn't turn that into a sticker. Try again." | — |
 
+`GenerationService.generate` with no stored key, or a Keychain that can't be read, throws `.invalidKey`: the table has no row for it because §8 routing sends a keyless user to Settings before they can generate, and `.invalidKey` is the case whose message points there. Nothing is sent.
+
 Billing 429s are checked **before** rate-limit 429s because both share the status. The moderation check uses `code` first; the HTTP status for refusals is not documented, so the mapper keys on `type`/`code` regardless of status. All cases log `status`, `type` and `code` with `OSLog`. The prompt is logged `privacy: .private` and the key never.
 
 ---

@@ -4,8 +4,8 @@ import OpenMojiCore
 /// sticker (tech spec §2 flow).
 ///
 /// Defined here, not in `OpenMojiCore`, because it is the model's own seam for
-/// fakes. `GenerationService` (openmoji-1ur) conforms to it and replaces the
-/// placeholder wired in `MessagesViewController`.
+/// fakes. `GenerationService` conforms to it (GenerationService+StickerGenerating.swift)
+/// and is wired in `MessagesViewController`.
 ///
 /// Implementations should stop when the calling task is cancelled (FR-10),
 /// throwing `.cancelled`.

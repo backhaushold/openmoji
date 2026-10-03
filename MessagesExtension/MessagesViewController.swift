@@ -7,7 +7,7 @@ import SwiftUI
 final class MessagesViewController: MSMessagesAppViewController {
     private let model = AppModel(
         credentials: KeychainCredentialStore(),
-        generator: UnwiredGenerator()
+        generator: GenerationService(credentials: KeychainCredentialStore(), client: OpenAIClient())
     )
 
     override func viewDidLoad() {
@@ -60,13 +60,5 @@ final class MessagesViewController: MSMessagesAppViewController {
     override func willResignActive(with conversation: MSConversation) {
         super.willResignActive(with: conversation)
         model.cancel()
-    }
-}
-
-/// Stands in until `GenerationService` (openmoji-1ur) conforms to
-/// `StickerGenerating` and is wired in here. Always fails.
-private struct UnwiredGenerator: StickerGenerating {
-    func generate(prompt: String) async throws(GenerationError) -> ProcessedSticker {
-        throw .serviceUnavailable
     }
 }
