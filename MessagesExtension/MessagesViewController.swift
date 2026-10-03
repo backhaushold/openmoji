@@ -47,6 +47,14 @@ final class MessagesViewController: MSMessagesAppViewController {
         model.presentationStyle = presentationStyle
     }
 
+    /// Re-reads whether a key is stored, so no key routes to Set up in compact
+    /// and Settings in expanded, and a key saved or cleared meanwhile is picked
+    /// up (FR-5, tech spec §8). `AppModel` also does this once in `init`.
+    override func willBecomeActive(with conversation: MSConversation) {
+        super.willBecomeActive(with: conversation)
+        model.refreshKey()
+    }
+
     /// An in-flight generation is lost when Messages tears the extension down,
     /// so stop it here (tech spec §2 Lifecycle).
     override func willResignActive(with conversation: MSConversation) {
