@@ -112,7 +112,7 @@ jobs:
         run: swiftlint lint --strict
 
       # 3. Keep the release lane scripts from rotting. Both steps run on every
-      # event, docs-only included: together they take about ten seconds, and
+      # event, docs-only included: together they take about half a minute, and
       # release-test stubs every external tool (no signing, no network, no
       # 1Password, no App Store Connect), so it needs no secrets.
       - name: shellcheck (scripts)

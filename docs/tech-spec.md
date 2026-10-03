@@ -509,7 +509,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
 - **`ci.yml`**: on `pull_request` and `push` to `main`, `macos-latest`, `setup-xcode` latest-stable, `permissions: contents: read`.
   1. gitleaks (REL-6).
   2. SwiftFormat and SwiftLint lint.
-  3. `shellcheck scripts/*.sh` and `make release-test` (`scripts/test-release.sh`, the lane self-test, which stubs every external tool: no signing, network, 1Password or App Store Connect), so the release lane scripts do not rot. Both run on every event, including docs-only changes (about ten seconds).
+  3. `shellcheck scripts/*.sh` and `make release-test` (`scripts/test-release.sh`, the lane self-test, which stubs every external tool: no signing, network, 1Password or App Store Connect), so the release lane scripts do not rot. Both run on every event, including docs-only changes (about half a minute).
   4. `swift test` (OpenMojiCore).
   5. `xcodegen generate`.
   6. `xcodebuild test` for `OpenMojiMessagesTests` on an iPad simulator with `CODE_SIGN_IDENTITY=-` (ad-hoc signing, so the host app carries its keychain entitlement; unsigned builds fail the Keychain test with `errSecMissingEntitlement`).
