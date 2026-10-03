@@ -513,7 +513,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
   4. `xcodegen generate`.
   5. `xcodebuild test` for `OpenMojiMessagesTests` on an iPad simulator with `CODE_SIGN_IDENTITY=-` (ad-hoc signing, so the host app carries its keychain entitlement; unsigned builds fail the Keychain test with `errSecMissingEntitlement`).
 
-  DerivedData cache keyed on `project.yml` and `**/*.swift`. A `paths-ignore` for docs-only changes is **not** used, because the lane's preflight needs a check run on every `main` commit. Instead a cheap docs-only fast path skips steps 4–5.
+  CI does not cache DerivedData. A `paths-ignore` for docs-only changes is **not** used, because the lane's preflight needs a check run on every `main` commit. Instead a cheap docs-only fast path skips steps 4–5.
 - **`testflight-expiry.yml`** (REL-9, alert only): `schedule: cron "0 14 * * *"` plus `workflow_dispatch` (input `threshold_days`, default 14), `ubuntu-latest`, `permissions: contents: read, issues: write`.
   1. Check out with tags and find the newest `build-*` tag by `creatordate`. The lane creates it as an annotated tag at upload (§12.3 step 9), so its date is the upload date.
   2. Expiry ≈ tag date + 90 days. TestFlight counts from upload; processing adds minutes, which is negligible against a 14-day threshold.
