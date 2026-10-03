@@ -522,12 +522,12 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
 - **`ci.yml`**: on `pull_request` and `push` to `main`, `macos-latest`, `setup-xcode` latest-stable, `permissions: contents: read`.
   1. gitleaks (REL-6).
   2. SwiftFormat and SwiftLint lint.
-  3. `shellcheck scripts/*.sh` and `make release-test` (`scripts/test-release.sh`, the lane self-test, which stubs every external tool: no signing, network, 1Password or App Store Connect), so the release lane scripts do not rot. Both run on every event, including docs-only changes (about half a minute).
+  3. `shellcheck scripts/*.sh` and `make release-test` (`scripts/test-release.sh`, the lane self-test, which stubs every external tool: no signing, network, 1Password or App Store Connect), so the release lane scripts do not rot. Both are skipped for docs-only changes.
   4. `swift test` (OpenMojiCore).
   5. `xcodegen generate`.
   6. `xcodebuild test` for `OpenMojiMessagesTests` on an iPad simulator with `CODE_SIGN_IDENTITY=-` (ad-hoc signing, so the host app carries its keychain entitlement; unsigned builds fail the Keychain test with `errSecMissingEntitlement`).
 
-  CI does not cache DerivedData. A `paths-ignore` for docs-only changes is **not** used, because the lane's preflight needs a check run on every `main` commit. Instead a cheap docs-only fast path skips steps 5–6.
+  CI does not cache DerivedData. A `paths-ignore` for docs-only changes is **not** used, because the lane's preflight needs a check run on every `main` commit. Instead an in-job docs-only fast path runs only step 1 and skips steps 2–6 and their tool installs and Xcode setup. Docs-only means every changed file is under `docs/` or `.claude/`, is `.gitignore`, or is a Markdown file outside `.github/`; any other change, including `.github/` and `ci.yml` itself, runs the full pipeline.
 - **`testflight-expiry.yml`** (REL-9, alert only): `schedule: cron "0 14 * * *"` plus `workflow_dispatch` (input `threshold_days`, default 14), `ubuntu-latest`, `permissions: contents: read, issues: write`.
   1. Check out with tags and find the newest `build-*` tag by `creatordate`. The lane creates it as an annotated tag at upload (§12.3 step 9), so its date is the upload date.
   2. Expiry ≈ tag date + 90 days. TestFlight counts from upload; processing adds minutes, which is negligible against a 14-day threshold.

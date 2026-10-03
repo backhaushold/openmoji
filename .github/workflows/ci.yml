@@ -2,8 +2,10 @@
 # repo has no Actions secrets (only the per-run GITHUB_TOKEN, read-only).
 #
 # No `paths-ignore`: the release lane's preflight needs a check run on every
-# main commit. Docs-only changes take a fast path that skips steps 5-6
-# (xcodegen and the simulator tests) but still produce the `verify` check run.
+# main commit. Docs-only changes (docs/, *.md, .gitignore, .claude/; anything
+# under .github/ always counts as code) take a fast path that runs only the
+# gitleaks scan, skipping every other install, lint and test step, but still
+# produce the `verify` check run.
 name: CI
 
 on:
@@ -59,12 +61,22 @@ jobs:
           fi
           docs_only=false
           if git cat-file -e "${base}^{commit}" 2>/dev/null; then
-            changed="$(git diff --name-only "$base" HEAD)"
+            # --no-renames: a rename out of code lists only its new path.
+            changed="$(git diff --name-only --no-renames "$base" HEAD)"
             echo "Changed files:"
             echo "$changed"
-            # Docs-only = every changed file is a Markdown file or under docs/.
-            if [ -n "$changed" ] && ! grep -qvE '^docs/|\.md$' <<<"$changed"; then
+            # Docs-only = every changed file is non-code: under docs/ or
+            # .claude/, .gitignore, or a Markdown file. Anything under .github/
+            # (the workflows included) is code, and so is every other path.
+            if [ -n "$changed" ]; then
               docs_only=true
+              while IFS= read -r file; do
+                case "$file" in
+                  .github/*) docs_only=false; break ;;
+                  docs/* | .claude/* | .gitignore | *.md) ;;
+                  *) docs_only=false; break ;;
+                esac
+              done <<<"$changed"
             fi
           fi
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
@@ -74,9 +86,13 @@ jobs:
       - name: Set DerivedData path
         run: echo "DERIVED_DATA=$RUNNER_TEMP/DerivedData" >> "$GITHUB_ENV"
 
-      - name: Install tools
+      - name: Install gitleaks
+        run: brew install gitleaks
+
+      - name: Install lint tools
+        if: steps.scope.outputs.docs_only != 'true'
         run: |
-          brew install gitleaks swiftlint shellcheck
+          brew install swiftlint shellcheck
           mkdir -p "$RUNNER_TEMP/sfbin"
           curl -fsSL -o "$RUNNER_TEMP/swiftformat.zip" \
             "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat.zip"
@@ -85,14 +101,18 @@ jobs:
           echo "$RUNNER_TEMP/sfbin" >> "$GITHUB_PATH"
 
       # 1. Secret scan (REL-6) over the full history; findings are redacted.
+      # Runs on every change, docs-only included: secrets can land in docs.
       - name: gitleaks
         run: gitleaks detect --redact --verbose --no-banner
 
+      # Steps 2-6 and the Xcode setup below are skipped for docs-only changes.
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        if: steps.scope.outputs.docs_only != 'true'
         with:
           xcode-version: latest-stable
 
       - name: Toolchain versions
+        if: steps.scope.outputs.docs_only != 'true'
         run: |
           xcodebuild -version
           swift --version
@@ -101,31 +121,33 @@ jobs:
       # 2. Lint, pull requests only: a squash-merge can't change content that
       # was already linted, so the push-to-main run skips it.
       - name: SwiftFormat lint
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.scope.outputs.docs_only != 'true'
         run: |
           test "$(swiftformat --version)" = "$SWIFTFORMAT_VERSION" \
             || { echo "::error::swiftformat is $(swiftformat --version), expected $SWIFTFORMAT_VERSION"; exit 1; }
           swiftformat --lint .
 
       - name: SwiftLint
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.scope.outputs.docs_only != 'true'
         run: swiftlint lint --strict
 
-      # 3. Keep the release lane scripts from rotting. Both steps run on every
-      # event, docs-only included: together they take about half a minute, and
-      # release-test stubs every external tool (no signing, no network, no
-      # 1Password, no App Store Connect), so it needs no secrets.
+      # 3. Keep the release lane scripts from rotting. release-test stubs every
+      # external tool (no signing, no network, no 1Password, no App Store
+      # Connect), so it needs no secrets.
       - name: shellcheck (scripts)
+        if: steps.scope.outputs.docs_only != 'true'
         run: shellcheck scripts/*.sh
 
       - name: make release-test (release lane self-test)
+        if: steps.scope.outputs.docs_only != 'true'
         run: make release-test
 
       # 4. OpenMojiCore unit tests on the Mac host.
       - name: swift test (OpenMojiCore)
+        if: steps.scope.outputs.docs_only != 'true'
         run: swift test --package-path Packages/OpenMojiCore
 
-      # 5-6. Skipped for docs-only changes.
+      # 5-6. Simulator tests.
       - name: xcodegen generate
         if: steps.scope.outputs.docs_only != 'true'
         run: |
