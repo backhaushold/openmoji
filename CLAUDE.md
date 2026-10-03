@@ -68,8 +68,8 @@ never direct to `main`). A current "don't commit/push" from the user still wins.
 
 OpenMoji: an iPad-only iMessage app extension that turns a text prompt into an
 emoji-style sticker via the OpenAI Images API. Family use, TestFlight internal
-testers only, no backend. Pre-code: spec phase (M2) is done; M3 scaffolds the
-app and release lane.
+testers only, no backend. Current progress lives in Beads (`bd ready`, milestone
+labels `m1`–`m5`), not here.
 
 - PRD (scope source of truth; locked decisions D1–D10, FR/NFR/REL IDs):
   https://claude.ai/code/artifact/4eb3c358-d044-4b4f-a48b-2aca31cd3bbe (a Claude Doc — read via the Docs connector)
