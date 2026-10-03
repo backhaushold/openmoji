@@ -97,15 +97,6 @@ jobs:
           xcodebuild -version
           swift --version
 
-      # Restored before `swift test` so hashFiles does not see Packages/**/.build.
-      - name: Restore DerivedData cache
-        if: steps.scope.outputs.docs_only != 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.DERIVED_DATA }}
-          key: deriveddata-${{ runner.os }}-${{ hashFiles('project.yml', '**/*.swift') }}
-          restore-keys: |
-            deriveddata-${{ runner.os }}-
 
       # 2. Lint, pull requests only: a squash-merge can't change content that
       # was already linted, so the push-to-main run skips it.
