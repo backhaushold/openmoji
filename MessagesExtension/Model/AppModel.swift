@@ -82,8 +82,8 @@ final class AppModel {
         /// Expanded, ready: the prompt.
         case compose
         /// Generating adapts to the style inside its view (one view, so it
-        /// keeps its state when the host expands or collapses). Preview and
-        /// the error look the same in both styles for now.
+        /// keeps its state when the host expands or collapses), and so does the
+        /// error. Preview looks the same in both styles for now.
         case generating
         case preview
         case failed(GenerationError)

@@ -1,10 +1,10 @@
 import SwiftUI
 
 /// Switches on `AppModel.route`. Idle is real (Compose when expanded, "New
-/// sticker" when compact), and so is Generating; Preview and Error are
-/// placeholders for separate beads. Settings is real: expanded with no key
+/// sticker" when compact), and so are Generating and Error; Preview is a
+/// placeholder for a separate bead. Settings is real: expanded with no key
 /// opens it directly (FR-5), compact with no key offers "Set up OpenMoji", and
-/// Compose's gear opens it as a sheet.
+/// Compose's gear and the error's Settings button open it as a sheet.
 struct RootView: View {
     let model: AppModel
     let settings: SettingsModel
@@ -38,7 +38,7 @@ struct RootView: View {
         case .preview:
             Text("Preview")
         case .failed(let error):
-            Text(error.userMessage ?? "Something went wrong.")
+            ErrorView(model: model, error: error) { showingSettings = true }
         }
     }
 }

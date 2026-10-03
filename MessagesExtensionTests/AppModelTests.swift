@@ -566,3 +566,161 @@ struct AppModelPreviewTests {
         #expect(model.presentationStyle == .expanded)
     }
 }
+
+/// One entry per `GenerationError` case, so the error-state tests cover every
+/// case. `init(_:)` and `sample` switch exhaustively: a new `GenerationError`
+/// case fails to compile here until it has a kind and a sample, and is then
+/// picked up by every test below that takes `ErrorKind.allCases`.
+enum ErrorKind: CaseIterable {
+    case cancelled
+    case offline
+    case timeout
+    case invalidKey
+    case keyNotPermitted
+    case budgetExhausted
+    case rateLimitedWithSeconds
+    case rateLimitedWithoutSeconds
+    case contentRefused
+    case modelUnavailable
+    case serviceUnavailable
+    case api
+    case processingFailed
+
+    // One case per error case is the point of this switch.
+    // swiftlint:disable:next cyclomatic_complexity
+    init(_ error: GenerationError) {
+        switch error {
+        case .cancelled: self = .cancelled
+        case .offline: self = .offline
+        case .timeout: self = .timeout
+        case .invalidKey: self = .invalidKey
+        case .keyNotPermitted: self = .keyNotPermitted
+        case .budgetExhausted: self = .budgetExhausted
+        case .rateLimited(let seconds):
+            self = seconds == nil ? .rateLimitedWithoutSeconds : .rateLimitedWithSeconds
+        case .contentRefused: self = .contentRefused
+        case .modelUnavailable: self = .modelUnavailable
+        case .serviceUnavailable: self = .serviceUnavailable
+        case .api: self = .api
+        case .processingFailed: self = .processingFailed
+        }
+    }
+
+    var sample: GenerationError {
+        switch self {
+        case .cancelled: .cancelled
+        case .offline: .offline
+        case .timeout: .timeout
+        case .invalidKey: .invalidKey
+        case .keyNotPermitted: .keyNotPermitted(apiMessage: "Project lacks image access.")
+        case .budgetExhausted: .budgetExhausted
+        case .rateLimitedWithSeconds: .rateLimited(retryAfter: 3)
+        case .rateLimitedWithoutSeconds: .rateLimited(retryAfter: nil)
+        case .contentRefused: .contentRefused
+        case .modelUnavailable: .modelUnavailable(apiMessage: "No such model.")
+        case .serviceUnavailable: .serviceUnavailable
+        case .api: .api(status: 418, apiMessage: "Teapot.")
+        case .processingFailed: .processingFailed
+        }
+    }
+}
+
+private let bothStyles: [MSMessagesAppPresentationStyle] = [.compact, .expanded]
+private let failingKinds = ErrorKind.allCases.filter { $0 != .cancelled }
+
+/// The Error state (FR-22 to FR-24; tech spec §6, §10).
+///
+/// "The library is never touched" (FR-24) holds by construction, not by a fake:
+/// `AppModel` takes only a credential store and a generator, so no
+/// `LibraryStore` write is reachable from the failure path. Keep, the only
+/// write, takes a `ProcessedSticker`, which a failed generation never produces.
+@MainActor
+struct AppModelErrorStateTests {
+    private static let prompt = "a sleepy owl"
+
+    /// A rig whose first generation of `prompt` fails with `error`.
+    private func failedRig(
+        _ error: GenerationError,
+        style: MSMessagesAppPresentationStyle = .expanded
+    ) async -> Rig {
+        let rig = makeRig(prompt: Self.prompt)
+        rig.model.presentationStyle = style
+        await rig.generator.enqueue(.failure(error), for: Self.prompt)
+        rig.model.generate()
+        await settle(rig.model)
+        return rig
+    }
+
+    @Test(arguments: ErrorKind.allCases)
+    func everyKindMapsToItsOwnSample(kind: ErrorKind) {
+        #expect(ErrorKind(kind.sample) == kind)
+    }
+
+    @Test(arguments: ErrorKind.allCases, bothStyles)
+    func aFailureShowsOneMessageAndKeepsThePrompt(kind: ErrorKind, style: MSMessagesAppPresentationStyle) async {
+        let error = kind.sample
+        let rig = await failedRig(error, style: style)
+
+        if kind == .cancelled {
+            // No message and no error view: back at the prompt, as for Cancel.
+            #expect(error.userMessage == nil)
+            #expect(rig.model.state == .idle)
+            #expect(rig.model.route == (style == .expanded ? .compose : .compactHome))
+        } else {
+            #expect(error.userMessage?.isEmpty == false)
+            #expect(rig.model.state == .failed(error, prompt: Self.prompt))
+            #expect(rig.model.route == .failed(error))
+        }
+        #expect(rig.model.prompt == Self.prompt)
+        #expect(await rig.generator.prompts == [Self.prompt])
+    }
+
+    @Test(arguments: failingKinds)
+    func tryAgainSendsTheSamePromptAndAFurtherFailureKeepsIt(kind: ErrorKind) async {
+        let error = kind.sample
+        let rig = await failedRig(error)
+        #expect(rig.model.canGenerate)
+
+        // Try again is `generate()`: it leaves failed for generating.
+        await rig.generator.enqueue(.failure(error), for: Self.prompt)
+        rig.model.generate()
+        #expect(inFlightTask(of: rig.model) != nil)
+        await settle(rig.model)
+        #expect(rig.model.state == .failed(error, prompt: Self.prompt))
+        #expect(rig.model.prompt == Self.prompt)
+
+        await rig.generator.enqueue(.success(makeProcessedSticker(prompt: Self.prompt)), for: Self.prompt)
+        rig.model.generate()
+        await settle(rig.model)
+        #expect(rig.model.state == .preview(makeProcessedSticker(prompt: Self.prompt)))
+        #expect(await rig.generator.prompts == [Self.prompt, Self.prompt, Self.prompt])
+    }
+
+    @Test(arguments: failingKinds, bothStyles)
+    func editingReturnsToTheHomeRouteWithThePromptIntact(kind: ErrorKind, style: MSMessagesAppPresentationStyle) async {
+        let rig = await failedRig(kind.sample, style: style)
+
+        rig.model.dismissError()
+        #expect(rig.model.state == .idle)
+        #expect(rig.model.route == (style == .expanded ? .compose : .compactHome))
+        #expect(rig.model.prompt == Self.prompt)
+    }
+
+    /// Only a rejected key points at Settings (§6). Everything else, including
+    /// `.keyNotPermitted`, which the table gives no Settings button, does not.
+    @Test(arguments: ErrorKind.allCases)
+    func onlyInvalidKeyOffersSettings(kind: ErrorKind) async {
+        #expect(kind.sample.offersSettings == (kind == .invalidKey))
+    }
+
+    @Test func invalidKeyFailsToTheErrorRouteWithSettingsOffered() async {
+        let rig = await failedRig(.invalidKey)
+
+        guard case .failed(let error) = rig.model.route else {
+            Issue.record("expected the failed route, got \(rig.model.route)")
+            return
+        }
+        #expect(error.offersSettings)
+        #expect(error.userMessage?.contains("Settings") == true)
+    }
+}
