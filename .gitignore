@@ -28,3 +28,6 @@
 
 # Agent worktrees
 .claude/worktrees/
+
+# M1 spike: generated images (raw model output, processed stickers, contact sheets)
+spikes/m1/out/
