@@ -13,6 +13,10 @@ final class MessagesViewController: MSMessagesAppViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         model.presentationStyle = presentationStyle
+        // Compact's "New sticker" needs the expanded style for text entry.
+        model.requestExpandedStyle = { [weak self] in
+            self?.requestPresentationStyle(.expanded)
+        }
 
         // Clearing the key sends the model back to needs-key (FR-5).
         let settings = SettingsModel(

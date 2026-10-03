@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Switches on `AppModel.state`. Placeholder content only: Compose, Generating,
-/// Preview and Error are separate beads. Settings is real: expanded with no
-/// key opens it directly (FR-5), and a gear from idle opens it as a sheet.
+/// Switches on `AppModel.state`. Idle is real (Compose when expanded, "New
+/// sticker" when compact); Generating, Preview and Error are placeholders for
+/// separate beads. Settings is real: expanded with no key opens it directly
+/// (FR-5), and Compose's gear opens it as a sheet.
 struct RootView: View {
     let model: AppModel
     let settings: SettingsModel
@@ -30,14 +31,10 @@ struct RootView: View {
                 Text("Set up OpenMoji")
             }
         case .idle:
-            VStack {
-                Text("OpenMoji")
-                if model.presentationStyle == .expanded {
-                    Button { showingSettings = true } label: {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .labelStyle(.iconOnly)
-                }
+            if model.presentationStyle == .expanded {
+                ComposeView(model: model) { showingSettings = true }
+            } else {
+                CompactHomeView(model: model)
             }
         case .generating:
             Text("Making your sticker…")

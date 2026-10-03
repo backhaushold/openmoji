@@ -29,9 +29,42 @@ final class AppModel {
 
     private(set) var state: State
 
+    /// The most characters a prompt may have (FR-6). Counted as `Character`s,
+    /// i.e. extended grapheme clusters, so what the user sees as one character
+    /// (an emoji with a skin tone or a ZWJ family, a letter with a combining
+    /// accent, CRLF) counts once. The spec doesn't say; this is the unit the
+    /// user can see and count. It also means truncation never splits a cluster.
+    static let promptLimit = 200
+
     /// The prompt draft, shared by Compose and Preview. A failure or a cancel
-    /// never touches it (FR-23).
-    var prompt = ""
+    /// never touches it (FR-23). It never holds more than `promptLimit`
+    /// characters: a longer value, such as a paste, is cut to the limit.
+    var prompt = "" {
+        didSet {
+            if prompt.count > Self.promptLimit {
+                prompt = String(prompt.prefix(Self.promptLimit))
+            }
+        }
+    }
+
+    /// The Compose counter's value: how many characters `prompt` has.
+    var promptCount: Int { prompt.count }
+
+    /// Whether Generate is enabled: a state that can start a generation (idle,
+    /// or Regenerate / Try again) and a prompt that isn't empty or only
+    /// whitespace.
+    var canGenerate: Bool {
+        switch state {
+        case .idle, .preview, .failed: break
+        case .needsKey, .generating: return false
+        }
+        return !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Asks the host for the expanded presentation style. Set by
+    /// `MessagesViewController` (`requestPresentationStyle(.expanded)`); a
+    /// closure so the model stays testable without a view controller.
+    @ObservationIgnored var requestExpandedStyle: @MainActor () -> Void = {}
 
     /// Mirrors the host's presentation style; set by `MessagesViewController`.
     var presentationStyle: MSMessagesAppPresentationStyle = .compact
@@ -61,15 +94,18 @@ final class AppModel {
         }
     }
 
+    /// Compact's "New sticker": text entry only happens in expanded, so ask
+    /// the host to expand (tech spec §10).
+    func startNewSticker() {
+        requestExpandedStyle()
+    }
+
     /// Starts generating from `prompt`. Allowed from idle, preview
-    /// (Regenerate) and failed (Try again); a blank prompt does nothing.
+    /// (Regenerate) and failed (Try again); a blank prompt does nothing
+    /// (see `canGenerate`).
     func generate() {
-        switch state {
-        case .idle, .preview, .failed: break
-        case .needsKey, .generating: return
-        }
+        guard canGenerate else { return }
         let text = prompt
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         generationID += 1
         let id = generationID
