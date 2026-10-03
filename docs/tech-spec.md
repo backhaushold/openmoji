@@ -389,6 +389,8 @@ Pass bar: ≥ 17/20 on items 1–4. Record latency and `usage` for each run at `
 | **Settings sheet** | §8 | FR-1–5 |
 | **Library editing** | Context menu on a cell: Delete (FR-19); "Reuse prompt" (FR-21, *Could*) | FR-19, 21 |
 
+The 200-character limit (FR-6) counts Swift `Character`s (extended grapheme clusters), so an emoji with a skin tone or a ZWJ family counts once, as the user sees it. `AppModel.prompt` enforces it by cutting longer input, such as a paste.
+
 Text entry only happens in expanded. Apple recommends against text fields in compact and says to request expanded as soon as such a control is selected. Tap-to-insert and peel-and-drag come from `MSStickerView` itself (A4). Dynamic Type and VoiceOver labels cover every control, and each sticker cell's label is its description (NFR-9). Library browsing, insert and drag need no network (NFR-10).
 
 ---
