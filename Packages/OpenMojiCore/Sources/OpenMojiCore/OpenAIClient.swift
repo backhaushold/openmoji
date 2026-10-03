@@ -29,13 +29,22 @@ public actor OpenAIClient {
         self.init(config: config, protocolClasses: nil)
     }
 
-    /// `protocolClasses` lets tests put a `URLProtocol` stub in front of the network.
-    init(config: GenerationConfig, protocolClasses: [AnyClass]?) {
+    /// `protocolClasses` lets tests put a `URLProtocol` stub in front of the
+    /// network. `httpAdditionalHeaders` lets each test tag its session's
+    /// requests so the stub can keep that test's state apart from every other.
+    init(
+        config: GenerationConfig,
+        protocolClasses: [AnyClass]?,
+        httpAdditionalHeaders: [String: String]? = nil
+    ) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = Self.timeout
         configuration.timeoutIntervalForResource = Self.timeout
         if let protocolClasses {
             configuration.protocolClasses = protocolClasses
+        }
+        if let httpAdditionalHeaders {
+            configuration.httpAdditionalHeaders = httpAdditionalHeaders
         }
         self.session = URLSession(configuration: configuration)
         self.config = config
@@ -123,13 +132,13 @@ public actor OpenAIClient {
             throw .processingFailed
         }
         #if DEBUG
-        if let usage = response.usage {
-            logger.debug("""
-                usage input=\(usage.inputTokens ?? -1, privacy: .public) \
-                output=\(usage.outputTokens ?? -1, privacy: .public) \
-                total=\(usage.totalTokens ?? -1, privacy: .public)
-                """)
-        }
+            if let usage = response.usage {
+                logger.debug("""
+                    usage input=\(usage.inputTokens ?? -1, privacy: .public) \
+                    output=\(usage.outputTokens ?? -1, privacy: .public) \
+                    total=\(usage.totalTokens ?? -1, privacy: .public)
+                    """)
+            }
         #endif
         guard let encoded = response.data?.first?.b64Json,
               let image = Data(base64Encoded: encoded),

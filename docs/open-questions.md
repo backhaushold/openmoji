@@ -21,7 +21,7 @@ Resolved items stay listed so the history is visible. "Blocks" names the earlies
 |---|---|---|---|
 | OQ-6 | Is `GET /v1/models/{id}` free of charge, and does it return 404 (not 403) for a model the org can't use yet? | M4 (FR-4) | Assume free; check the OpenAI usage dashboard after the first validation call and adjust the §5.4 table |
 | OQ-7 | Is the OpenAI organization verified for GPT Image 2.5? | M1 | Verify before the spike; the spike fails without it |
-| OQ-8 | Pin the dated snapshot `gpt-image-2.5-flare-2026-09-08` or use the moving alias `gpt-image-2.5-flare`? | M4 | Alias: picks up fixes automatically, and FR-9 lets us pin later with one build |
+| OQ-8 | Pin the dated snapshot `gpt-image-2.5-flare-2026-09-08` or use the moving alias `gpt-image-2.5-flare`? | — | **Resolved** 2026-10-02: use the alias `gpt-image-2.5-flare`. It picks up fixes automatically, and FR-9 lets us pin a snapshot later with one build |
 | OQ-9 | Real cost and latency per attempt (replaces NFR-8's unverified "< $0.05") | M1 | Measure from `usage` and wall-clock over the 20-prompt set at low, medium and high |
 | OQ-10 | Do tap-to-insert and peel-and-drag from `MSStickerView` work in both compact and expanded on iPadOS 26, and does a long-press context menu conflict with peel? | M3 | Verify in the shell build; fallbacks in [ADR-0008](adr/0008-swiftui-with-msstickerview.md) |
 | OQ-11 | Does `MSSticker` accept file URLs inside the App Group container? | M3 | Expected yes; fallback is copying to a temp file (tech spec A5) |

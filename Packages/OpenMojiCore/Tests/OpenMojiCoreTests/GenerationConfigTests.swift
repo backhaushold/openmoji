@@ -101,7 +101,7 @@ import Testing
         #expect(!config.model.isEmpty)
         #expect(!config.quality.isEmpty)
     }
-    
+
     // MARK: Extra keys ignored
 
     @Test func ignoresExtraKeysInDictionary() {
