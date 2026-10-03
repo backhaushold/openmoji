@@ -5,7 +5,6 @@ import Testing
 /// One canned case per row of tech spec §6 (FR-22), in table order, plus
 /// the ordering rules, Retry-After parsing and secret hygiene.
 @Suite struct ErrorMapperTests {
-
     // MARK: Helpers
 
     /// An OpenAI error body: {"error": {"message", "type", "code", "param"}}.

@@ -1,0 +1,14 @@
+# SwiftFormat (CI runs `swiftformat --lint .`).
+#
+# Allow-list of whitespace and import hygiene rules, not the full default set:
+# the defaults (trailing commas, brace wrapping, redundant self, ...) are
+# opinions the code here doesn't follow, and an allow-list also keeps CI stable
+# when a newer SwiftFormat adds rules. Add rules here deliberately.
+--swiftversion 6.4
+--rules indent,trailingSpace,linebreakAtEndOfFile,consecutiveBlankLines,blankLinesAtStartOfScope,blankLinesAtEndOfScope,sortImports,duplicateImports,spaceAroundOperators,spaceAroundParens,spaceAroundBrackets,spaceAroundBraces,spaceInsideParens,spaceInsideBrackets,spaceInsideBraces,spaceAroundComments,spaceInsideComments,semicolons
+
+--indent-strings true
+--ranges preserve
+
+# Test files import `Testing` then `@testable import OpenMojiCore`.
+--importgrouping testable-last
