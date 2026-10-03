@@ -1,0 +1,51 @@
+# REL-9, tech spec 12.6, ADR-0010. Alert only: reads the upload date from the
+# newest `build-*` tag (pushed by the local release lane) and opens an issue
+# when the 90-day TestFlight build expiry is near. No App Store Connect access,
+# no Actions secrets: only the per-run GITHUB_TOKEN (contents read, issues
+# write). The logic lives in scripts/testflight-expiry.sh so it can be tested
+# offline.
+name: TestFlight expiry
+
+on:
+  schedule:
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+    inputs:
+      threshold_days:
+        description: Alert if the newest build expires within this many days
+        type: string
+        default: "14"
+
+permissions:
+  contents: read
+  issues: write
+
+# A manual run and the daily cron must not both pass the "no open issue" check
+# and open duplicates.
+concurrency:
+  group: testflight-expiry
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash # explicit shell enables `-eo pipefail`
+    steps:
+      # The script needs the tags (their dates), not the history.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Check newest build tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Empty on schedule runs; the script then uses its default of 14.
+          THRESHOLD_DAYS: ${{ inputs.threshold_days }}
+        run: scripts/testflight-expiry.sh

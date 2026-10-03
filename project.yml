@@ -51,6 +51,7 @@ targets:
         # ADR-0014. Set per target: XcodeGen's iOS preset sets "1,2" at target
         # level, which would override a project-level value.
         TARGETED_DEVICE_FAMILY: "2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_CFBundleDisplayName: OpenMoji
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
@@ -98,6 +99,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.backhaushold.openmoji.MessagesExtension
         TARGETED_DEVICE_FAMILY: "2"
+        # The iMessage icon set (.stickersiconset) lives in Assets.xcassets.
+        ASSETCATALOG_COMPILER_APPICON_NAME: iMessage App Icon
       configs:
         Release:
           CODE_SIGN_STYLE: Manual
