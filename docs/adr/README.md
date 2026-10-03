@@ -19,5 +19,6 @@ One file per significant technical decision in the [tech spec](../tech-spec.md).
 | [0013](0013-generation-config-build-settings.md) | Model ID and quality via build settings → Info.plist | Proposed |
 | [0014](0014-ipad-only-device-family.md) | iPad-only device family | Accepted |
 | [0015](0015-app-store-connect-api-tooling.md) | App Store Connect API via a dependency-free Swift script | Proposed |
+| [0016](0016-onepassword-service-account-auth.md) | 1Password service account for non-interactive release auth | Proposed |
 
 "Accepted" means the user chose the option on 2026-10-02. "Proposed" means it is recommended in the spec and awaiting review with the spec PR.

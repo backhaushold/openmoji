@@ -4,9 +4,10 @@ One-time Apple and Mac setup for the release lane, the expiry register, and a
 short routine-release section. Design lives in the
 [tech spec §12](../tech-spec.md#12-release-pipeline) and
 [ADR-0010](../adr/0010-local-release-lane.md),
-[ADR-0011](../adr/0011-manual-per-target-signing.md) and
-[ADR-0015](../adr/0015-app-store-connect-api-tooling.md); this file is the
-"how", the spec is the "why".
+[ADR-0011](../adr/0011-manual-per-target-signing.md),
+[ADR-0015](../adr/0015-app-store-connect-api-tooling.md) and
+[ADR-0016](../adr/0016-onepassword-service-account-auth.md) (1Password service
+account); this file is the "how", the spec is the "why".
 
 > **Status.** The one-time setup (section 2) is actionable now. The lane through
 > the upload (`make testflight`, `scripts/op-run.sh`, `scripts/release.sh`,
@@ -27,6 +28,10 @@ short routine-release section. Design lives in the
   ([ADR-0010](../adr/0010-local-release-lane.md)). If you believe CI needs ASC
   access, it does not: the expiry alert works from `build-*` tag dates
   ([§12.6](../tech-spec.md#126-ci-and-expiry-automation-github-actions)).
+- The optional 1Password service-account token (section 2.6) lives only in the
+  git-ignored `.env` on the release Mac, mode 600. It is never committed, never
+  added to GitHub, and never read into an issue, PR, bead, chat or AI agent
+  session.
 - The OpenAI key is unrelated to this runbook and lives only in the iPad's
   Keychain.
 - Always use `rm -f` / `cp -f` in shell snippets; interactive aliases hang.
@@ -82,6 +87,9 @@ and the human beads:
    op vault list
    op vault create OpenMoji      # only if the vault is not listed
    ```
+
+   This is the interactive mode (1Password app approval). For unattended runs,
+   section 2.6 sets up a read-only service account instead.
 
 4. An **Apple Distribution certificate** for team `AB5S94XWRQ` exists with its
    private key on this Mac. Tech spec assumption A7 is that the certificate
@@ -347,6 +355,80 @@ anywhere, revoke it immediately (Integrations, Team Keys, Revoke), then repeat
 `key-id` and `private-key-base64` (and `issuer-id` if it changed) in the
 1Password item, then revoke the old key.
 
+### 2.6 Non-interactive 1Password auth: a service account (optional)
+
+Design: [ADR-0016](../adr/0016-onepassword-service-account-auth.md).
+`scripts/op-run.sh` authenticates `op` one of two ways, chosen by whether a
+`.env` exists at the repo root:
+
+| | Service account | Interactive |
+|---|---|---|
+| When | `.env` holds `OP_SERVICE_ACCOUNT_TOKEN=<token>` | no `.env` (the default) |
+| Prompt | none; `make testflight` can run unattended | the 1Password app may ask for approval |
+| Needs | the token; the file must be mode 600 | 1Password app unlocked, Settings, Developer, **Integrate with the 1Password CLI** on |
+| `op-run.sh` prints | `1Password auth: service account (token from .env)` | `1Password auth: interactive` |
+
+Either way the script first runs `op vault get OpenMoji` (vault metadata, no
+item is read) and stops with `1Password authentication failed ... Nothing was
+run.` if that fails, before `release.sh` starts. `make op-check` runs only that
+check.
+
+To switch to the service account (skip this section to stay interactive):
+
+1. **Create the service account, read-only on the `OpenMoji` vault.** You need
+   to be signed in to `op` as someone allowed to create service accounts; if
+   your plan or role does not allow it, stay interactive. Only `read_items` is
+   needed: the lane reads the signing-keychain password and the ASC key and
+   writes nothing. A service account's vault access cannot be edited after
+   creation; to change it, create a new one. Run from the repo root. The token
+   is returned **once**, so this writes it straight into a new `.env` (created
+   `0600`, never shown, never in a variable or in your shell history; `set -C`
+   makes it refuse to overwrite an existing `.env`, in which case no service
+   account is created):
+
+   ```bash
+   ( set -C; umask 077; { printf 'OP_SERVICE_ACCOUNT_TOKEN='; \
+       op service-account create openmoji-release --vault OpenMoji:read_items --raw; } > .env )
+   ```
+
+   Optional: add `--expires-in 52w` (seconds, minutes, hours, days or weeks) so
+   the token lapses by itself; then add a row for it to the expiry register
+   (section 3) and renew it the same way. You can also create the account in
+   your 1Password account's web settings (Developer, service accounts), grant
+   the `OpenMoji` vault **Read** only, and paste the token into `.env` with an
+   editor after `cp .env.example .env && chmod 600 .env`. The format is one line,
+   `OP_SERVICE_ACCOUNT_TOKEN=<token>`, no spaces, no trailing comment.
+
+2. **Check the file mode.** Group or other access makes `op-run.sh` refuse the
+   file:
+
+   ```bash
+   chmod 600 .env
+   ls -l .env     # -rw-------
+   ```
+
+3. **Check it works** without any prompt:
+
+   ```bash
+   make op-check
+   # want: op-run: ok, authenticated (service account (token from .env)) and the OpenMoji vault is readable
+   ```
+
+`.env` is git-ignored, and only `.env.example` (an empty placeholder) is
+committed. **Never commit `.env`, paste the token anywhere, or open the file in
+an AI agent session**; treat it like the signing-keychain password. The token
+reaches only `op` (through the environment; it is never in a command line or
+printed, and `op-run.sh` runs `release.sh` without it). If it is exposed, or
+the Mac is lost, delete the service account in your 1Password account's web
+settings (the CLI cannot revoke it), `rm -f .env`, and repeat the steps above.
+The same is the rotation procedure. To return to interactive auth, `rm -f .env`
+(and `unset OP_SERVICE_ACCOUNT_TOKEN` if your shell exports it).
+
+`1Password authentication failed` with a token in `.env` means the token was
+revoked or expired, or its service account cannot read the `OpenMoji` vault.
+`.env ... readable by other users` is the mode check (step 2). `OP_SERVICE_ACCOUNT_TOKEN
+is empty` is the unedited `.env.example` placeholder.
+
 ## 3. Expiry register
 
 The distribution certificate and both profiles expire yearly, and a profile
@@ -396,9 +478,13 @@ Bump `MARKETING_VERSION` in `project.yml` by hand first if the user-visible
 version should change; the build number is injected by the lane
 (`git rev-list --count HEAD`, REL-3).
 
-`make testflight` runs `scripts/release.sh` through `scripts/op-run.sh`, which
-runs `op run --env-file release/.env.example` so 1Password injects four
-variables for that one process (approve in the 1Password app if it asks):
+`make testflight` runs `scripts/release.sh` through `scripts/op-run.sh`. That
+first authenticates `op` (the service-account token in `.env` if there is one,
+else the 1Password app; section 2.6) and checks it can read the `OpenMoji`
+vault, stopping with a message before anything else runs if not. Then it runs
+`op run --env-file release/.env.example` so 1Password injects four variables
+for that one process (in interactive mode, approve in the 1Password app if it
+asks; `release.sh` is started without the service-account token):
 `SIGNING_KEYCHAIN_PASSWORD` (`op://OpenMoji/openmoji-signing-keychain/password`,
 2.3) and `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_PRIVATE_KEY_BASE64` (from
 `op://OpenMoji/testflight-asc-api-key/`, 2.5). The signing keychain path is not
@@ -461,7 +547,9 @@ HTTPS-only encryption ([§3](../tech-spec.md#3-targets-modules-and-entitlements)
 `make release-test` (`scripts/test-release.sh`) exercises the lane scripts with
 every external tool stubbed: each preflight failure, the `sk-` scan, and
 cleanup of the temporary key and the keychain search list on success, failure
-and signals. It signs and uploads nothing; run it after editing the scripts.
+and signals. It also covers `op-run.sh`'s two auth modes with a stub `op` and a
+fake token in a fixture directory (never your real `.env`). It signs and
+uploads nothing; run it after editing the scripts.
 
 About two weeks before a build's 90 days are up, the scheduled workflow opens a
 GitHub issue labelled `testflight-expiry`. Run `make testflight-status` to see
@@ -539,7 +627,10 @@ The lane's preflight checks `xcode-select -p` and stops before signing.
 ## 6. Provenance
 
 Command syntax checked on 2026-10-02 against `man security`,
-`op item create --help` and `xcodebuild -help`; the `security cms` and
+`op item create --help` and `xcodebuild -help`; the 1Password service-account
+steps (2.6) against `op service-account create --help` (`--vault
+<name>:read_items`, `--raw`, `--expires-in`, token shown once, no revoke
+subcommand) and `op vault get --help` on 1Password CLI 2.39.0, 2026-10-02; the `security cms` and
 `openssl x509` expiry commands were run against an installed profile and
 certificate. The lane's own commands (section 4) were checked the same day
 against `xcodebuild -help` (archive and export flags, export option keys),
