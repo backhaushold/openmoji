@@ -9,12 +9,13 @@ short routine-release section. Design lives in the
 [ADR-0016](../adr/0016-onepassword-service-account-auth.md) (1Password service
 account); this file is the "how", the spec is the "why".
 
-> **Status.** The one-time setup (section 2) is actionable now. The lane through
-> the upload (`make testflight`, `scripts/op-run.sh`, `scripts/release.sh`,
-> `release/ExportOptions.plist`, `release/.env.example`; §12.3 steps 0 to 7) is
-> built (bead `openmoji-4kq`). The post-upload steps 8 and 9, `scripts/asc.swift`
-> and `make testflight-status` are not built yet (bead `openmoji-2pq`); section 4
-> marks them.
+> **Status.** The one-time setup (section 2) is actionable now. The whole lane
+> (`make testflight`, `scripts/op-run.sh`, `scripts/release.sh`,
+> `release/ExportOptions.plist`, `release/.env.example`; §12.3 steps 0 to 9) is
+> built (beads `openmoji-4kq` and `openmoji-2pq`), as are `scripts/asc.swift` and
+> `make testflight-status`. Steps 8 and 9 and `asc.swift` have only been run
+> against a local stub server so far: the first real upload (bead `openmoji-i5k`)
+> is their first contact with App Store Connect, so read their output then.
 
 ## 1. Ground rules
 
@@ -462,16 +463,15 @@ Renewal, names unchanged so no repo edit is needed beyond this table:
 ## 4. Routine release
 
 > As built for [§12.3](../tech-spec.md#123-make-testflight-sequence-scriptsreleasesh-via-scriptsop-runsh)
-> steps 0 to 7. Steps 8 and 9 and `make testflight-status`
-> ([§12.6](../tech-spec.md#126-ci-and-expiry-automation-github-actions)) are not
-> built yet (bead `openmoji-2pq`) and are marked below.
+> steps 0 to 9 and `make testflight-status`
+> ([§12.6](../tech-spec.md#126-ci-and-expiry-automation-github-actions)).
 
 On the release Mac, from a clean checkout of `main` that equals `origin/main`
 with CI green on that commit:
 
 ```bash
-make testflight           # steps 0-7 today: preflight to upload. Steps 8-9 (distribute, tag) after openmoji-2pq
-make testflight-status    # not built yet (openmoji-2pq): newest VALID build's exact expiry and processing state
+make testflight           # preflight, tests, archive, upload, wait for VALID, What to Test, Family group, build-N tag
+make testflight-status    # the newest build's processing state and exact expirationDate (read-only)
 ```
 
 Bump `MARKETING_VERSION` in `project.yml` by hand first if the user-visible
@@ -527,13 +527,25 @@ secret and defaults to `~/Library/Keychains/openmoji-signing.keychain-db`; set
    packaging logs) and `-authenticationKeyPath/-ID/-IssuerID` (REL-1, REL-4),
    and delete the temporary directory straight afterwards. It is also deleted
    on failure, Ctrl-C, `SIGTERM` and `SIGHUP`.
-8. **Post-upload** via `scripts/asc.swift` _(not built yet, `openmoji-2pq`)_:
-   wait for processing to reach VALID, set "What to Test" from `git log` since
-   the previous `build-*` tag (REL-8), and make sure the build is in the
-   `Family` group (REL-5). Until then, do these by hand in App Store Connect.
-9. **Tag** _(not built yet, `openmoji-2pq`)_ the commit `build-<N>` (annotated)
-   and push it. That tag's date is what the CI expiry alert reads, so until step
-   9 exists there is no alert for builds uploaded by this lane.
+8. **Post-upload** via `swift scripts/asc.swift`, which reads the same three
+   `ASC_*` variables (the key is decoded in memory, never written):
+   - `wait-for-build <N>` polls App Store Connect every 30 s (override with
+     `ASC_POLL_INTERVAL`) for up to 45 min (`ASC_WAIT_TIMEOUT`, seconds) until
+     the build's `processingState` is `VALID`. A build that is not listed yet
+     counts as still processing. `INVALID` or `FAILED` fails the lane.
+   - `set-whats-new <N> <text>` sets "What to Test" (REL-8) to
+     `git log build-<prev>..HEAD --format='- %s'`, where `build-<prev>` is the
+     highest earlier `build-<number>` reachable from `HEAD`. **The first upload
+     has no earlier tag:** the text is `First TestFlight build. Most recent
+     changes:` and the 20 newest commit subjects.
+   - `ensure-in-group <N> Family` (REL-5) adds the build to the internal
+     `Family` group unless it is already there, and says which it was ("already
+     in group Family" means automatic distribution did it; "added build ..."
+     means it did not, which is the answer to OQ-13, `openmoji-ppj`).
+9. **Tag** the commit `build-<N>` (annotated, message `TestFlight upload <UTC
+   time>`) and push just that tag. It runs **only after step 8 succeeded**, so a
+   `build-<N>` tag always means a VALID build in `Family`. Its date is what the
+   CI expiry alert reads.
 
 Nothing is signed before step 6; steps 1 to 4 fail before the keychain is even
 touched, and a failure prints which step it was in and whether anything was
@@ -544,16 +556,68 @@ number and App Store Connect rejects it as a duplicate; land a new commit
 first. No export compliance prompt is expected; the build declares
 HTTPS-only encryption ([§3](../tech-spec.md#3-targets-modules-and-entitlements)).
 
-`make release-test` (`scripts/test-release.sh`) exercises the lane scripts with
-every external tool stubbed: each preflight failure, the `sk-` scan, and
-cleanup of the temporary key and the keychain search list on success, failure
-and signals. It also covers `op-run.sh`'s two auth modes with a stub `op` and a
-fake token in a fixture directory (never your real `.env`). It signs and
-uploads nothing; run it after editing the scripts.
+`make release-test` (`scripts/test-release.sh`, then `scripts/test-asc.sh`)
+exercises the lane scripts with every external tool stubbed: each preflight
+failure, the `sk-` scan, cleanup of the temporary key and the keychain search
+list on success, failure and signals, and steps 8 and 9 (the order of the
+`asc.swift` calls, the What to Test text, and that the `build-<N>` tag is
+annotated and pushed only after the build is VALID, never on INVALID, a
+timeout or a failed step). It also covers `op-run.sh`'s two auth modes with a
+stub `op` and a fake token in a fixture directory (never your real `.env`), and
+`make testflight-status`. `test-asc.sh` runs `asc.swift` itself against a local
+stub HTTP server on 127.0.0.1 with a throwaway key (JWT header, claims and
+signature, polling, error handling, the What to Test and group requests). None of
+it signs, uploads or calls App Store Connect; run it after editing the scripts.
+
+### Reading `make testflight-status`
+
+```text
+asc: newest build 12: state=VALID uploaded=2026-10-03T10:00:00-07:00 expirationDate=2027-01-01T10:00:00.123-08:00 (2027-01-01T18:00:00Z, 90 days left)
+```
+
+`expirationDate` is Apple's own string; the parenthesis is the same instant in
+UTC and the days left (`EXPIRED` once it has passed). If the newest build is
+still `PROCESSING` (or `FAILED`/`INVALID`), a second line shows the newest
+`VALID` build and its expiry. Exit code 1 with "no builds are listed" means
+nothing has been uploaded yet; `HTTP 401` or `403` means the key is wrong,
+revoked or lacks App Manager (2.5).
 
 About two weeks before a build's 90 days are up, the scheduled workflow opens a
 GitHub issue labelled `testflight-expiry`. Run `make testflight-status` to see
 the exact date, then run `make testflight` again.
+
+### If the lane fails after the upload
+
+Once step 7 succeeds the build is at Apple, so a re-run of `make testflight` on
+the same commit is rejected as a duplicate build number. The lane's failure line
+then says `Build <N> WAS uploaded` and no `build-<N>` tag has been pushed (the tag
+is pushed last). Find the case, finish by hand, then push the tag so the expiry
+alert sees the build. Run the `asc.swift` commands through `op-run.sh` so the key
+is injected; `<N>` is the build number from the failure line.
+
+- **`did not become VALID`, exit 3 (timeout).** Processing may still finish. Run
+  `make testflight-status` until the build is `VALID`, then continue below.
+- **`finished processing as INVALID` or `FAILED` (exit 4).** Apple emails the
+  account holder the reasons (and App Store Connect, TestFlight shows them).
+  Fix the cause, land a new commit, run `make testflight` again. Do not tag.
+- **`VALID but its What to Test text could not be set`.** Read asc's error above
+  it, then repeat that step by hand, or set the text in App Store Connect:
+
+  ```bash
+  scripts/op-run.sh swift scripts/asc.swift set-whats-new <N> "$(git log build-<prev>..HEAD --format='- %s')"
+  ```
+
+- **`could not be put in the Family group`.**
+  `scripts/op-run.sh swift scripts/asc.swift ensure-in-group <N> Family`, or add
+  the build to the group in App Store Connect. The error names the cause (no
+  such group, group not internal, build not VALID).
+- **`pushing the tag failed`.** The annotated tag exists locally. Run the command
+  the lane printed: `git push origin refs/tags/build-<N>`.
+- **Everything else is done** and only the tag is missing (for example after the
+  fixes above): from the released commit, `git tag -a build-<N> -m "TestFlight
+  upload $(date -u +%FT%TZ)" <commit>` and `git push origin refs/tags/build-<N>`.
+  Tag the commit that was released, which is the one whose commit count is `<N>`
+  (`git rev-list --count <commit>`).
 
 ## 5. Pitfalls
 
@@ -638,3 +702,21 @@ against `xcodebuild -help` (archive and export flags, export option keys),
 `gitleaks detect --help` and `gh api --help`, and its `gh api` check-run query
 was run read-only against `origin/main`. ASC steps follow Apple's linked help pages. The reference project's
 runbook was read for pitfalls only; nothing is copied.
+
+The App Store Connect API calls in `scripts/asc.swift` (section 4, steps 8 and
+9, and `make testflight-status`) were checked on 2026-10-03 against Apple's
+documentation (`developer.apple.com/documentation/appstoreconnectapi`, read as
+the documentation site's JSON): the JWT header (`alg` ES256, `kid`, `typ`) and
+claims (`iss`, `iat`, `exp`, `aud` `appstoreconnect-v1`) and the 20-minute limit
+on a token's life; `GET /v1/builds` filters, sort values and the build
+attributes `processingState` (`PROCESSING`, `FAILED`, `INVALID`, `VALID`) and
+`expirationDate`; `GET /v1/apps` and `GET /v1/betaGroups` filters and the
+`isInternalGroup` and `hasAccessToAllBuilds` attributes; the
+`betaBuildLocalizations` create and update bodies (`whatsNew`); and
+`POST /v1/builds/{id}/relationships/betaGroups` (204). No request has been made
+to the real API yet (no key exists until `openmoji-t2m`). The documentation does
+not state the `whatsNew` length limit. `asc.swift` cuts the text at 4000
+characters, a figure from memory of the TestFlight web UI that has **not** been
+confirmed against Apple's documentation; if App Store Connect rejects a text, the
+409 detail in the lane's failure output says so, and the cap in `asc.swift`
+(`Config.maxWhatsNewLength`) is the one number to change.

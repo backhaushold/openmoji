@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Self-test for the release lane (bead openmoji-4kq). Run: make release-test
+# Self-test for the release lane (beads openmoji-4kq, openmoji-2pq). Run: make release-test
 #
 # Signs nothing, uploads nothing, never touches the network, 1Password, App
 # Store Connect or the real keychain. Each case runs the REAL scripts/release.sh
@@ -9,6 +9,13 @@
 # swift, xcodebuild, security, xcode-select) with shell functions that log
 # their calls. "Nothing signed" means: no `security unlock-keychain` and no
 # `xcodebuild archive` / `-exportArchive` in that log.
+#
+# Steps 8-9 (bead openmoji-2pq): `swift scripts/asc.swift ...` is one of the
+# stubbed tools (logged as "asc <command> ..."), so the lane's own logic is
+# tested here: the order of the calls, the What to Test text, and that the
+# annotated build-N tag is pushed to the (local, bare) origin only after the
+# build is VALID. asc.swift itself is tested against a local stub HTTP server by
+# scripts/test-asc.sh.
 #
 # Section (d) covers scripts/op-run.sh (bead openmoji-pxc.3): it runs a copy of
 # the script in a fixture directory with a fake .env and a stub `op`. It never
@@ -83,8 +90,49 @@ driver() {
     if [ "${FAIL_AT:-}" = xcodegen ]; then return 1; fi
   }
   swift() {
-    log_call "swift $*"
-    if [ "${FAIL_AT:-}" = swift ]; then return 1; fi
+    case "${1:-}" in
+      */scripts/asc.swift)
+        shift
+        stub_asc "$@"
+        ;;
+      *)
+        log_call "swift $*"
+        if [ "${FAIL_AT:-}" = swift ]; then return 1; fi
+        ;;
+    esac
+  }
+  # `swift scripts/asc.swift <command> ...`. Logs the command line (not the
+  # What to Test text, which goes to $NOTES_FILE) and what the lane's state is
+  # when it is called: is the build-N tag on origin yet, and does asc.swift see
+  # the ASC_* variables and no test hook. ASC_MODE picks a failure.
+  stub_asc() {
+    local command="$1" tag_on_origin=0
+    shift
+    if [ -n "$(git ls-remote --tags origin "refs/tags/build-$BUILD_NUMBER")" ]; then tag_on_origin=1; fi
+    if [ "$command" = set-whats-new ]; then
+      log_call "asc $command $1 <text in notes file>"
+      printf '%s' "$2" >"$NOTES_FILE"
+    else
+      log_call "asc $command $*"
+    fi
+    probe "tag_on_origin_at_$command=$tag_on_origin"
+    if [ -n "${ASC_ISSUER_ID:-}" ] && [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_PRIVATE_KEY_BASE64:-}" ]; then
+      probe "asc_env_ok_at_$command=1"
+    fi
+    if [ -z "${ASC_TEST_BASE_URL+x}${ASC_TEST_RETRY_DELAY+x}" ]; then probe "asc_test_hooks_unset=1"; fi
+    case "$command:${ASC_MODE:-ok}" in
+      wait-for-build:invalid)
+        echo "asc: ERROR: build $1 finished processing as INVALID" >&2
+        return 4
+        ;;
+      wait-for-build:timeout)
+        echo "asc: ERROR: timed out after 1 s; build $1 was last PROCESSING" >&2
+        return 3
+        ;;
+      wait-for-build:sigint) kill -INT $$ ;;
+      set-whats-new:notes-fail) return 1 ;;
+      ensure-in-group:group-fail) return 1 ;;
+    esac
   }
   security() {
     case "$1" in
@@ -189,19 +237,20 @@ check() { # description, command...
 }
 
 # Case state, set by new_case / run_lane.
-CASE_DIR="" FIXTURE="" RC=0 CALL_LOG="" PROBE="" STDOUT="" STDERR="" KEYCHAIN="" EXPECTED_P8=""
+CASE_DIR="" FIXTURE="" RC=0 CALL_LOG="" PROBE="" STDOUT="" STDERR="" KEYCHAIN="" EXPECTED_P8="" NOTES_FILE=""
 
 # -- predicates over the last run ---------------------------------------------
 rc_is() { [ "$RC" -eq "$1" ]; }
 rc_nonzero() { [ "$RC" -ne 0 ]; }
 err_has() { grep -qF -- "$1" "$STDERR"; }
+err_lacks() { ! grep -qF -- "$1" "$STDERR"; }
 out_has() { grep -qF -- "$1" "$STDOUT"; }
 log_has() { grep -qE -- "$1" "$CALL_LOG"; }
 log_lacks() { ! grep -qE -- "$1" "$CALL_LOG"; }
 probe_has() { grep -qxF -- "$1" "$PROBE"; }
 probe_lacks() { ! grep -q -- "$1" "$PROBE"; }
 nothing_signed() { log_lacks '^security unlock-keychain|^xcodebuild archive|^xcodebuild -exportArchive'; }
-nothing_past_preflight() { log_lacks '^(gitleaks|xcodegen|swift|security|xcodebuild) '; }
+nothing_past_preflight() { log_lacks '^(gitleaks|xcodegen|swift|asc|security|xcodebuild) '; }
 no_leftover_tmp() { [ -z "$(ls -A "$CASE_DIR/tmp")" ]; }
 recorded_key_is_gone() {
   local path
@@ -224,6 +273,27 @@ no_secret_in_output() {
     fi
   done
 }
+asc_calls() { grep -c '^asc ' "$CALL_LOG" || true; }
+no_asc_calls() { [ "$(asc_calls)" -eq 0 ]; }
+# The build-N tag (steps 9): local, on the bare origin, annotated, and where.
+local_tag_exists() { git -C "$FIXTURE" rev-parse -q --verify "refs/tags/build-$1" >/dev/null; }
+origin_tag_exists() { git -C "$CASE_DIR/origin.git" rev-parse -q --verify "refs/tags/build-$1" >/dev/null; }
+no_tag() { ! local_tag_exists "$1" && ! origin_tag_exists "$1"; }
+tag_is_annotated() { [ "$(git -C "$FIXTURE" cat-file -t "refs/tags/build-$1" 2>/dev/null)" = tag ]; }
+origin_tag_is_annotated() { [ "$(git -C "$CASE_DIR/origin.git" cat-file -t "refs/tags/build-$1" 2>/dev/null)" = tag ]; }
+tag_points_at_head() { [ "$(git -C "$FIXTURE" rev-parse "refs/tags/build-$1^{commit}")" = "$(git -C "$FIXTURE" rev-parse HEAD)" ]; }
+origin_tag_points_at_head() { [ "$(git -C "$CASE_DIR/origin.git" rev-parse "refs/tags/build-$1^{commit}")" = "$(git -C "$FIXTURE" rev-parse HEAD)" ]; }
+tag_message_is_upload_stamp() {
+  git -C "$FIXTURE" tag -l --format='%(contents:subject)' "build-$1" \
+    | grep -qE '^TestFlight upload [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+}
+tag_date_is_now() { # the tagger date is the upload date the expiry alert reads
+  local tagged now
+  tagged=$(git -C "$CASE_DIR/origin.git" for-each-ref --format='%(taggerdate:unix)' "refs/tags/build-$1")
+  now=$(date +%s)
+  [ -n "$tagged" ] && [ "$((now - tagged))" -ge 0 ] && [ "$((now - tagged))" -lt 300 ]
+}
+notes_are() { [ "$(cat "$NOTES_FILE")" = "$1" ]; }
 order_is() { # patterns in the order they must first appear in the call log
   local last=0 pattern line
   for pattern in "$@"; do
@@ -258,6 +328,18 @@ new_case() {
   git -C "$FIXTURE" push -q -u origin main
 }
 
+# extra_commits subject...: more commits on main, pushed so HEAD still equals
+# origin/main. The build number (commit count) grows with each.
+extra_commits() {
+  local subject
+  for subject in "$@"; do
+    printf '%s\n' "$subject" >"$FIXTURE/file-$subject.txt"
+    git -C "$FIXTURE" add -A
+    git -C "$FIXTURE" commit -q -m "$subject"
+  done
+  git -C "$FIXTURE" push -q origin main
+}
+
 # run_lane [VAR=value | -u VAR]...: run the lane in the current case with a
 # complete, valid environment; the arguments override it.
 run_lane() {
@@ -265,11 +347,13 @@ run_lane() {
   PROBE="$CASE_DIR/probe.log"
   STDOUT="$CASE_DIR/stdout"
   STDERR="$CASE_DIR/stderr"
+  NOTES_FILE="$CASE_DIR/whatsnew.txt"
   : >"$CALL_LOG"
   : >"$PROBE"
+  : >"$NOTES_FILE"
   RC=0
   (
-    export FIXTURE CALL_LOG PROBE EXPECTED_P8
+    export FIXTURE CALL_LOG PROBE EXPECTED_P8 NOTES_FILE
     export TMPDIR="$CASE_DIR/tmp"
     export SIGNING_KEYCHAIN_PATH="$KEYCHAIN"
     export SIGNING_KEYCHAIN_PASSWORD="fake-keychain-password-0000"
@@ -530,7 +614,7 @@ group "the archive and upload commands (kept archives, flags)"
 new_case happy-path
 run_lane
 N=$(git -C "$FIXTURE" rev-list --count HEAD)
-check "steps run in spec order" order_is '^gh api' '^gitleaks ' '^xcodegen ' '^swift ' '^security unlock-keychain' '^xcodebuild archive' '^xcodebuild -exportArchive'
+check "steps run in spec order" order_is '^gh api' '^gitleaks ' '^xcodegen ' '^swift ' '^security unlock-keychain' '^xcodebuild archive' '^xcodebuild -exportArchive' '^asc wait-for-build' '^asc set-whats-new' '^asc ensure-in-group'
 check "build number is the commit count ($N)" log_has "CURRENT_PROJECT_VERSION=$N( |$)"
 check "archive kept at build/release/OpenMoji-$N.xcarchive" test -d "$FIXTURE/build/release/OpenMoji-$N.xcarchive"
 check "archive path passed to xcodebuild" log_has "^xcodebuild archive .*-archivePath [^ ]*/build/release/OpenMoji-$N\.xcarchive "
@@ -544,7 +628,140 @@ check "export uses release/ExportOptions.plist" log_has "^xcodebuild -exportArch
 check "export passes the ASC key id and issuer" log_has '-authenticationKeyID ABCDE12345 -authenticationKeyIssuerID 00000000-0000-0000-0000-000000000000$'
 check "export passes a temporary .p8 path" log_has '-authenticationKeyPath [^ ]*/openmoji-release\.[A-Za-z0-9]+/AuthKey_ABCDE12345\.p8 '
 check "the signing keychain was unlocked" log_has "^security unlock-keychain -p <redacted> $KEYCHAIN\$"
-check "final message says steps 8-9 are not automated yet" out_has "openmoji-2pq"
+check "final message says the build is VALID, in Family and tagged" out_has "build $N is VALID, has What to Test notes, is in the Family group and is tagged build-$N."
+
+# ================================================================= (c2) ======
+group "(c2) steps 8-9: wait for VALID, What to Test, Family group, then the annotated tag"
+
+new_case post-first-build
+run_lane ASC_TEST_BASE_URL=http://127.0.0.1:9 ASC_TEST_RETRY_DELAY=9
+N=$(git -C "$FIXTURE" rev-list --count HEAD)
+check "no earlier build tag (first build): exits 0" rc_is 0
+check "asc.swift waits for the build number with the default timeout and interval" log_has "^asc wait-for-build $N --timeout 2700 --interval 30$"
+check "asc.swift sets What to Test for that build" log_has "^asc set-whats-new $N <text in notes file>$"
+check "asc.swift puts that build in the Family group" log_has "^asc ensure-in-group $N Family$"
+check "the order is wait, What to Test, group" order_is '^asc wait-for-build' '^asc set-whats-new' '^asc ensure-in-group'
+check "all three run after the upload" order_is '^xcodebuild -exportArchive' '^asc wait-for-build'
+check "first build: says it has no earlier build tag" out_has "no earlier build-* tag, so the 20 most recent commits (first build)"
+check "first build: What to Test is a header and the recent commits, newest first" \
+  notes_are $'First TestFlight build. Most recent changes:\n- second\n- first'
+check "asc.swift sees the three ASC_* variables at every step" \
+  test "$(grep -c '^asc_env_ok_at_' "$PROBE")" -eq 3
+check "the lane never passes asc.swift's test hooks through (ASC_TEST_BASE_URL was set by the caller)" probe_has "asc_test_hooks_unset=1"
+check "the tag was not on origin during wait-for-build" probe_has "tag_on_origin_at_wait-for-build=0"
+check "the tag was not on origin during set-whats-new" probe_has "tag_on_origin_at_set-whats-new=0"
+check "the tag was not on origin during ensure-in-group" probe_has "tag_on_origin_at_ensure-in-group=0"
+check "the tag exists locally afterwards" local_tag_exists "$N"
+check "the tag is annotated" tag_is_annotated "$N"
+check "the tag was pushed to origin" origin_tag_exists "$N"
+check "the pushed tag is annotated" origin_tag_is_annotated "$N"
+check "the tag points at HEAD (the released commit)" tag_points_at_head "$N"
+check "the pushed tag points at HEAD" origin_tag_points_at_head "$N"
+check "the tag message is 'TestFlight upload <UTC time>'" tag_message_is_upload_stamp "$N"
+check "the tag's date is the upload date (now)" tag_date_is_now "$N"
+check "only the build tag was pushed (no branch, no other tag)" test "$(git -C "$CASE_DIR/origin.git" for-each-ref --format='%(refname)' | grep -c .)" -eq 2
+check "no secret in output, log or probe" no_secret_in_output
+
+new_case post-previous-tag
+extra_commits third fourth fifth
+git -C "$FIXTURE" tag build-1 "HEAD~4"
+git -C "$FIXTURE" tag -a build-3 -m "older upload" "HEAD~2"
+git -C "$FIXTURE" tag build-final "HEAD~1"
+git -C "$FIXTURE" tag build-9 HEAD
+git -C "$FIXTURE" switch -q -c side "HEAD~4"
+printf 'side\n' >"$FIXTURE/side.txt"
+git -C "$FIXTURE" add -A
+git -C "$FIXTURE" commit -q -m "side only"
+git -C "$FIXTURE" tag build-4
+git -C "$FIXTURE" switch -q main
+run_lane
+N=$(git -C "$FIXTURE" rev-list --count HEAD)
+check "five commits: build number is 5" test "$N" -eq 5
+check "earlier tags: exits 0" rc_is 0
+check "What to Test uses the newest earlier tag build-3 (not build-1, build-4 off main, non-numeric build-final or build-9 above N)" out_has "What to Test: commits since build-3 (REL-8)"
+check "What to Test is exactly the commits since build-3, newest first, as '- subject' lines" notes_are $'- fifth\n- fourth'
+check "the new tag build-5 is annotated and on origin" origin_tag_is_annotated 5
+
+new_case post-custom-wait
+run_lane ASC_WAIT_TIMEOUT=120 ASC_POLL_INTERVAL=2.5
+check "custom wait settings: exits 0" rc_is 0
+check "ASC_WAIT_TIMEOUT and ASC_POLL_INTERVAL are passed to asc.swift" log_has "^asc wait-for-build 2 --timeout 120 --interval 2.5$"
+
+for bad in "ASC_WAIT_TIMEOUT=abc" "ASC_WAIT_TIMEOUT=0" "ASC_WAIT_TIMEOUT=-5" "ASC_POLL_INTERVAL=0.0" "ASC_POLL_INTERVAL=1.2.3" "ASC_POLL_INTERVAL=5s"; do
+  new_case "bad-wait-${bad//[^A-Za-z0-9]/_}"
+  run_lane "$bad"
+  expect_preflight_stop "$bad" "must be a positive number of seconds"
+  check "$bad: no asc.swift call, no tag" no_asc_calls
+done
+
+new_case post-invalid
+run_lane ASC_MODE=invalid
+check "build INVALID: lane exits non-zero" rc_nonzero
+check "build INVALID: says it did not become VALID and that the build is uploaded but not tagged" err_has "build 2 did not become VALID. Build 2 is uploaded but NOT tagged."
+check "build INVALID: asc.swift's own message is shown" err_has "finished processing as INVALID"
+check "build INVALID: no What to Test, no group" log_lacks '^asc (set-whats-new|ensure-in-group)'
+check "build INVALID: NO tag locally or on origin" no_tag 2
+check "build INVALID: the cleanup message says the build WAS uploaded" err_has "Build 2 WAS uploaded to App Store Connect"
+check "build INVALID: does not claim nothing was uploaded" test "$(grep -c 'Nothing was signed or uploaded' "$STDERR" || true)" -eq 0
+check "build INVALID: names the failed step" err_has 'FAILED during "8. Post-upload'
+check "build INVALID: keychain search list restored" keychains_restored
+check "build INVALID: no temp directory left behind" no_leftover_tmp
+
+new_case post-timeout
+run_lane ASC_MODE=timeout
+check "processing timeout: lane exits non-zero" rc_nonzero
+check "processing timeout: says the build did not become VALID" err_has "build 2 did not become VALID"
+check "processing timeout: NO tag locally or on origin" no_tag 2
+check "processing timeout: no What to Test, no group" log_lacks '^asc (set-whats-new|ensure-in-group)'
+check "processing timeout: the cleanup message says the build WAS uploaded" err_has "Build 2 WAS uploaded to App Store Connect"
+
+new_case post-notes-fail
+run_lane ASC_MODE=notes-fail
+check "What to Test fails: lane exits non-zero" rc_nonzero
+check "What to Test fails: says so" err_has "build 2 is VALID but its What to Test text could not be set"
+check "What to Test fails: the group step did not run" log_lacks '^asc ensure-in-group'
+check "What to Test fails: NO tag locally or on origin" no_tag 2
+
+new_case post-group-fail
+run_lane ASC_MODE=group-fail
+check "Family group fails: lane exits non-zero" rc_nonzero
+check "Family group fails: says so" err_has "build 2 is VALID but could not be put in the Family group"
+check "Family group fails: NO tag locally or on origin" no_tag 2
+
+new_case post-sigint
+run_lane ASC_MODE=sigint
+check "Ctrl-C while waiting for processing: exits 130" rc_is 130
+check "Ctrl-C while waiting: NO tag locally or on origin" no_tag 2
+check "Ctrl-C while waiting: says the build WAS uploaded" err_has "Build 2 WAS uploaded to App Store Connect"
+check "Ctrl-C while waiting: names the interrupted step" err_has 'FAILED during "8. Post-upload'
+check "Ctrl-C while waiting: keychain search list restored" keychains_restored
+
+new_case tag-exists
+git -C "$FIXTURE" tag -a build-2 -m "stale local tag"
+run_lane
+check "a local build-N tag already exists: lane exits non-zero" rc_nonzero
+check "existing tag: says so and how to push it" err_has "tag build-2 already exists locally; build 2 is VALID and in Family."
+check "existing tag: nothing was pushed" test -z "$(git -C "$CASE_DIR/origin.git" tag -l 'build-*')"
+
+new_case tag-push-fails
+git -C "$FIXTURE" remote set-url --push origin "$CASE_DIR/does-not-exist.git"
+run_lane
+check "tag push fails: lane exits non-zero" rc_nonzero
+check "tag push fails: says the build is VALID and in Family but the push failed" err_has "build 2 is VALID and in Family, but pushing the tag failed."
+check "tag push fails: gives the exact command to run by hand" err_has "git push origin refs/tags/build-2"
+check "tag push fails: the tag exists locally and is annotated" tag_is_annotated 2
+check "tag push fails: nothing reached origin" test -z "$(git -C "$CASE_DIR/origin.git" tag -l 'build-*')"
+
+# Failures before the upload never call App Store Connect and never tag.
+new_case upload-fails-no-asc
+run_lane UPLOAD_MODE=fail
+check "upload fails: asc.swift is never called" no_asc_calls
+check "upload fails: NO tag" no_tag 2
+check "upload fails: still says nothing was uploaded" err_lacks "WAS uploaded"
+new_case scan-fails-no-asc
+run_lane SEED_KEY=text
+check "seeded key: asc.swift is never called" no_asc_calls
+check "seeded key: NO tag" no_tag 2
 
 # ================================================================= (d) =======
 group "(d) op-run.sh: service-account token from .env, or interactive 1Password"
@@ -608,6 +825,26 @@ else
 fi
 EOF
 chmod +x "$STUB_BIN/release-stand-in"
+
+# A stand-in for `swift` (so `make testflight-status` never reaches App Store
+# Connect): records its arguments and what it can see. ASC_* values are fake and
+# are never logged, only whether they were set.
+cat >"$STUB_BIN/swift" <<'EOF'
+#!/bin/bash
+printf 'swift: args=%s\n' "$*" >>"$OP_LOG"
+if [ -n "${OP_SERVICE_ACCOUNT_TOKEN+x}" ]; then
+  printf 'swift: token=present\n' >>"$OP_LOG"
+else
+  printf 'swift: token=absent\n' >>"$OP_LOG"
+fi
+if [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ] && [ -n "${ASC_PRIVATE_KEY_BASE64:-}" ]; then
+  printf 'swift: asc_vars=set\n' >>"$OP_LOG"
+else
+  printf 'swift: asc_vars=missing\n' >>"$OP_LOG"
+fi
+echo "asc: newest build 7: state=VALID (stub)"
+EOF
+chmod +x "$STUB_BIN/swift"
 
 OPR="" OP_LOG=""
 oprun_case() { # name: a fixture "repo" holding copies of the real script and Makefile
@@ -867,6 +1104,30 @@ check "make op-check: exits 0 and only checks auth" rc_is 0
 check "make op-check: no op run, no release script" oplog_lacks "op: run "
 check "make op-check: the token appears in no output, log or op argv" token_nowhere
 
+# --- make testflight-status: the same script, asc.swift latest-build -------------
+oprun_case make-status
+valid_dotenv
+# The stub `op run` does not resolve release/.env.example, so the variables 1Password
+# would inject are supplied (fake) by the caller.
+run_oprun ASC_KEY_ID=ABCDE12345 ASC_ISSUER_ID=00000000-0000-0000-0000-000000000000 ASC_PRIVATE_KEY_BASE64=ZmFrZQ== -- make testflight-status
+check "make testflight-status: exits 0, non-interactively" rc_is 0
+check "make testflight-status: authenticated op first, then ran swift scripts/asc.swift latest-build through op run" \
+  oplog_has "op: run --env-file $OPR/release/.env.example -- /usr/bin/env -u OP_SERVICE_ACCOUNT_TOKEN swift scripts/asc.swift latest-build | token=present matches=yes"
+check "make testflight-status: the auth check came before op run" auth_before_run
+check "make testflight-status: swift got exactly scripts/asc.swift latest-build" oplog_has "swift: args=scripts/asc.swift latest-build"
+check "make testflight-status: asc.swift does not inherit the 1Password token" oplog_has "swift: token=absent"
+check "make testflight-status: asc.swift has the ASC_* variables" oplog_has "swift: asc_vars=set"
+check "make testflight-status: prints what asc.swift printed" out_has "asc: newest build 7: state=VALID"
+check "make testflight-status: the release script did not run" release_not_run
+check "make testflight-status: the token appears in no output, log or op argv" token_nowhere
+
+oprun_case make-status-auth-fails
+valid_dotenv
+run_oprun OP_MODE=fail -- make testflight-status
+check "make testflight-status, auth fails: exits non-zero" rc_nonzero
+check "make testflight-status, auth fails: swift never ran" oplog_lacks "swift: "
+check "make testflight-status, auth fails: op run was never started" oplog_lacks "op: run "
+
 # ============================================== the other lane artifacts =====
 group "Makefile, .env.example files, ExportOptions.plist, .gitignore"
 
@@ -874,6 +1135,14 @@ make_testflight_dry_run() { make -n -C "$ROOT" testflight | grep -qF "scripts/op
 check "Makefile: make testflight runs op-run.sh then release.sh" make_testflight_dry_run
 make_op_check_dry_run() { make -n -C "$ROOT" op-check | grep -qxF "scripts/op-run.sh --check"; }
 check "Makefile: make op-check runs op-run.sh --check" make_op_check_dry_run
+make_status_dry_run() { make -n -C "$ROOT" testflight-status | grep -qxF "scripts/op-run.sh swift scripts/asc.swift latest-build"; }
+check "Makefile: make testflight-status runs asc.swift latest-build through op-run.sh" make_status_dry_run
+make_release_test_dry_run() {
+  local plan
+  plan=$(make -n -C "$ROOT" release-test)
+  [ "$plan" = "$(printf 'scripts/test-release.sh\nscripts/test-asc.sh')" ]
+}
+check "Makefile: make release-test runs test-release.sh then test-asc.sh" make_release_test_dry_run
 
 # The root .env.example is the committed template for the git-ignored .env.
 root_env_assignments() { grep -vE '^[[:space:]]*(#|$)' "$ROOT/.env.example"; }
