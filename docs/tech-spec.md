@@ -340,6 +340,7 @@ protocol CredentialStore: Sendable {
 }
 ```
 
+- **Access group at runtime.** iOS has no public API to read an entitlement, so `KeychainCredentialStore` asks the Keychain which group an item with no explicit group lands in (the first `keychain-access-groups` entry, already resolved), keeps its prefix and appends `.com.backhaushold.openmoji.shared`. A non-secret probe item (service `com.backhaushold.openmoji.access-group-probe`) is created once for this and left in place.
 - **Entry (FR-1).** Settings sheet reachable from the expanded view: one `SecureField`, Save, Clear. Input is trimmed of whitespace and must start with `sk-`; otherwise "That doesn't look like an OpenAI key" (no network call).
 - **Validate-then-save (FR-4).** §5.4.
 - **Display (FR-3).** After save, the field is replaced by `•••• last4` computed from `load()` at display time. The full key is never placed back into a text field.
@@ -510,7 +511,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
   2. SwiftFormat and SwiftLint lint.
   3. `swift test` (OpenMojiCore).
   4. `xcodegen generate`.
-  5. `xcodebuild test` for `OpenMojiMessagesTests` on an iPad simulator with `CODE_SIGNING_ALLOWED=NO`.
+  5. `xcodebuild test` for `OpenMojiMessagesTests` on an iPad simulator with `CODE_SIGN_IDENTITY=-` (ad-hoc signing, so the host app carries its keychain entitlement; unsigned builds fail the Keychain test with `errSecMissingEntitlement`).
 
   DerivedData cache keyed on `project.yml` and `**/*.swift`. A `paths-ignore` for docs-only changes is **not** used, because the lane's preflight needs a check run on every `main` commit. Instead a cheap docs-only fast path skips steps 4–5.
 - **`testflight-expiry.yml`** (REL-9, alert only): `schedule: cron "0 14 * * *"` plus `workflow_dispatch` (input `threshold_days`, default 14), `ubuntu-latest`, `permissions: contents: read, issues: write`.
