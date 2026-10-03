@@ -328,6 +328,18 @@ Bead: `openmoji-9yf`.
    accepts the email invitation in the TestFlight app on their iPad. Internal
    testers can install builds for 90 days from upload.
 
+   **A family member under 13 cannot be a tester** (decided 2026-10-03). App
+   Store Connect refuses them as a team user, and TestFlight itself requires
+   13+ (16 in some countries). Don't change their account's birth date. Instead,
+   on their iPad set Settings, Apple Account, **Media & Purchases** to an adult
+   tester's Apple Account (one in the `Family` group), then install TestFlight
+   and the build from it. Their iCloud and Messages stay theirs, and the
+   extension runs in their Messages as usual. Updates and the 90-day reinstall
+   need that adult account in TestFlight on the iPad. External testing and
+   Ad Hoc installs were rejected: the first is out of PRD scope (internal
+   testers only) and age-limited too, the second is a second distribution
+   route for one tester.
+
 ### 2.5 App Store Connect API key into 1Password (§12.2 step 5)
 
 One key, role **App Manager** (can manage builds and TestFlight; does not need
