@@ -208,7 +208,7 @@ Content-Type: application/json
 
 | Parameter | Value | Why |
 |---|---|---|
-| `model` | From `GenerationConfig` (Info.plist `OpenMojiImageModel`), default `gpt-image-2.5-flare` | FR-9; alias not snapshot (see open questions) |
+| `model` | From `GenerationConfig` (Info.plist `OpenMojiImageModel`), default `gpt-image-2.5-flare` | FR-9; the alias, not a dated snapshot (OQ-8, resolved) |
 | `n` | `1` | D3, FR-8 |
 | `size` | `1024x1024` | Smallest standard square. Custom sizes must total ≥ 655,360 px (≈ 810²), so 618 px cannot be requested directly |
 | `quality` | From `GenerationConfig`, default `medium` | FR-9; final default set by M1 (OQ-4) |
