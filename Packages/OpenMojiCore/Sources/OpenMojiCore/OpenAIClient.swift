@@ -29,13 +29,22 @@ public actor OpenAIClient {
         self.init(config: config, protocolClasses: nil)
     }
 
-    /// `protocolClasses` lets tests put a `URLProtocol` stub in front of the network.
-    init(config: GenerationConfig, protocolClasses: [AnyClass]?) {
+    /// `protocolClasses` lets tests put a `URLProtocol` stub in front of the
+    /// network. `httpAdditionalHeaders` lets each test tag its session's
+    /// requests so the stub can keep that test's state apart from every other.
+    init(
+        config: GenerationConfig,
+        protocolClasses: [AnyClass]?,
+        httpAdditionalHeaders: [String: String]? = nil
+    ) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = Self.timeout
         configuration.timeoutIntervalForResource = Self.timeout
         if let protocolClasses {
             configuration.protocolClasses = protocolClasses
+        }
+        if let httpAdditionalHeaders {
+            configuration.httpAdditionalHeaders = httpAdditionalHeaders
         }
         self.session = URLSession(configuration: configuration)
         self.config = config
