@@ -22,9 +22,9 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
 
 ## 1. PRD acceptance criteria (verbatim)
 
-- [ ] **AC-1** Fresh install with no key: opening the extension leads to the settings sheet; a valid key saves and the prompt view appears.
-  - Source: AC-1; FR-5 (§13), FR-1, FR-4
-  - How: delete OpenMoji from the iPad and reinstall from TestFlight. Open Messages, open OpenMoji from the app drawer, expand it. The settings sheet shows (not the prompt). Enter a valid key (needs internet for validation); Save. The prompt view appears.
+- [ ] **AC-1** Fresh install with no key: opening the extension lands on the library with a "Set up OpenMoji" button that leads to the settings sheet; a valid key saves and the library shows "New sticker".
+  - Source: AC-1; FR-5 (§13), FR-1, FR-4; [ADR-0017](adr/0017-expanded-first-layout.md)
+  - How: delete OpenMoji from the iPad and reinstall from TestFlight. Open Messages, open OpenMoji from the app drawer, expand it. The empty library shows with "Set up OpenMoji" (not "New sticker"); tap it and the settings sheet opens. Enter a valid key (needs internet for validation); Save. The library shows again, now with "New sticker".
   - Notes:
 
 - [ ] **AC-2** A typical prompt yields a sticker with a transparent background in under 30 s on Wi-Fi.
@@ -145,7 +145,7 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
 
 - [ ] **FR-3** After saving, only the last four characters of the key are shown; Clear removes the key.
   - Source: FR-3 (§13, §8)
-  - How: after Save, the field is replaced by `•••• last4` matching the end of the key, and the full key never comes back into a text field (reopen Settings to confirm). Tap Clear: the key is gone, and opening the expanded view goes straight to Settings again (FR-5).
+  - How: after Save, the field is replaced by `•••• last4` matching the end of the key, and the full key never comes back into a text field (reopen Settings to confirm). Tap Clear: the key is gone, and the expanded view shows the library with "Set up OpenMoji" again (FR-5, ADR-0017).
   - Notes:
 
 - [ ] **FR-17** The library grid shows in expanded, newest first.
