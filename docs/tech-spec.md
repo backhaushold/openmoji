@@ -35,9 +35,9 @@ These do not change any locked decision, but the PRD text should be corrected.
 |---|---|---|
 | A1 | The OpenAI project key is granted **Model capabilities: Request** and **List models: Read** (needed for FR-4 validation, [ADR-0009](adr/0009-key-validation.md)) | FR-4 reports "key lacks permission"; family admin adds the scope |
 | A2 | The OpenAI organization is verified for GPT Image 2.5 (confirmed 2026-10-02, OQ-7) | Every generation returns an access error; mapped to "key not permitted" with the API message |
-| A3 | Text entry works in the expanded Messages-context view on iPadOS 26 (Apple documents expanded as the place for text input) | Verified in M3 shell build before feature work |
-| A4 | `MSStickerView` supports tap-to-insert and peel-and-drag in both compact and expanded styles (docs describe peel-and-drag but not per-style) | Fallback: `activeConversation.insert(_:)` on tap; verified in M3 |
-| A5 | `MSSticker` accepts file URLs inside the App Group container | Fallback: copy to the extension's temp dir before creating the sticker; verified in M3 |
+| A3 | Text entry works in the expanded Messages-context view on iPadOS 26 (Apple documents expanded as the place for text input). **Verified** 2026-10-04 on the iPad Air (M3 probe) | None needed |
+| A4 | `MSStickerView` supports tap-to-insert and peel-and-drag in expanded style, and a SwiftUI `.contextMenu` on a cell coexists with peel (hold still = menu, immediate drag = peel). **Verified** 2026-10-04 on the iPad Air (OQ-10). Compact is unreachable on iPadOS 26, so it is untested ([ADR-0017](adr/0017-expanded-first-layout.md)) | Fallback `activeConversation.insert(_:)` also works, but isn't needed |
+| A5 | `MSSticker` accepts file URLs inside the App Group container. **Verified** 2026-10-04 on the iPad Air (OQ-11) | None needed: no temp copy |
 | A6 | App Store Connect internal-testing groups can be set to auto-distribute new builds (confirmed 2026-10-03, OQ-13) | REL-5 falls back to an explicit API call (§12.5) |
 | A7 | The same Apple Distribution certificate (team `AB5S94XWRQ`) used by Sagelet can sign OpenMoji | Create a second distribution cert |
 
@@ -55,7 +55,7 @@ flowchart LR
         end
         subgraph Ext["Messages extension<br/>com.backhaushold.openmoji.MessagesExtension"]
             VC["MessagesViewController<br/>(MSMessagesAppViewController)"]
-            UI["SwiftUI views<br/>Compact: LibraryGrid<br/>Expanded: Compose · Preview · Settings"]
+            UI["SwiftUI views<br/>Expanded: LibraryGrid (landing) · Compose · Preview · Settings<br/>Compact (if it appears): LibraryGrid"]
             VM["AppModel<br/>(@MainActor, state machine)"]
             subgraph Core["OpenMojiCore (local Swift package)"]
                 Gen["GenerationService"]
@@ -349,7 +349,7 @@ protocol CredentialStore: Sendable {
 - **Entry (FR-1).** Settings sheet reachable from the expanded view: one `SecureField`, Save, Clear. Input is trimmed of whitespace and must start with `sk-`; otherwise "That doesn't look like an OpenAI key" (no network call).
 - **Validate-then-save (FR-4).** §5.4.
 - **Display (FR-3).** After save, the field is replaced by `•••• last4` computed from `load()` at display time. The full key is never placed back into a text field.
-- **Routing (FR-5).** On `willBecomeActive`, `AppModel` calls `load()`. If nil: compact shows the library (sending works with no key, NFR-10) plus a "Set up OpenMoji" button. Expanded opens straight to Settings instead of the prompt.
+- **Routing (FR-5).** On `willBecomeActive`, `AppModel` calls `load()`. If nil: the library grid still shows (sending works with no key, NFR-10), with a "Set up OpenMoji" button in place of "New sticker" that opens Settings. In expanded, the only style that appears on iPadOS 26, this is the landing screen; in compact (if it appears) the button first requests expanded ([ADR-0017](adr/0017-expanded-first-layout.md)).
 - **Never logged (NFR-6).** `CredentialStore` and `OpenAIClient` have no log statements that touch the key. `GenerationError` cases never carry request headers. A unit test asserts that `String(describing:)` of every error case and of the request-builder output with a sentinel key contains no `sk-`.
 
 ---
@@ -386,13 +386,16 @@ Pass bar: ≥ 17/20 on items 1–4. Record latency and `usage` for each run at `
 
 | Style | Content | FRs |
 |---|---|---|
-| **Compact** | Library grid (`LazyVGrid` of `StickerCell`, a `UIViewRepresentable` wrapping `MSStickerView`), newest first; "New sticker" button → `requestPresentationStyle(.expanded)`; empty state | FR-17, 18, 20 |
-| **Expanded – Compose** | `TextField` (200-char limit with counter), Generate, gear → Settings; library grid below | FR-6, 1 |
+| **Expanded – Library** (landing) | Library grid (`LazyVGrid` of `StickerCell`, a `UIViewRepresentable` wrapping `MSStickerView`), newest first; "New sticker" button → Compose (with no key, "Set up OpenMoji" → Settings instead, §8); empty state | FR-17, 18, 20 |
+| **Expanded – Compose** | `TextField` (200-char limit with counter), Generate, gear → Settings | FR-6, 1 |
 | **Expanded – Generating** | Progress indicator, "Making your sticker…", Cancel | FR-10 |
 | **Expanded – Preview** | Large `MSStickerView` of the processed PNG (written to a temp file), Keep, Regenerate, editable prompt | FR-11, 12 |
 | **Expanded – Error** | Message from §6, prompt intact, Try again | FR-22, 23 |
 | **Settings sheet** | §8 | FR-1–5 |
 | **Library editing** | Context menu on a cell: Delete (FR-19); "Reuse prompt" (FR-21, *Could*) | FR-19, 21 |
+| **Compact** (only if it ever appears) | Minimal: the same library grid; "New sticker" button → `requestPresentationStyle(.expanded)`; with no key, "Set up OpenMoji" does the same (§8) | FR-17 |
+
+**Expanded first ([ADR-0017](adr/0017-expanded-first-layout.md)).** On the iPad Air with iPadOS 26 the extension opens only in expanded, in portrait and landscape: `requestPresentationStyle(.compact)` is ignored, and dragging down or tapping Messages' own text box dismisses the app (M3 probe, 2026-10-04). So expanded is the real UI, and its landing screen is the library grid, not the prompt. The compact row stays only in case compact ever appears.
 
 The 200-character limit (FR-6) counts Swift `Character`s (extended grapheme clusters), so an emoji with a skin tone or a ZWJ family counts once, as the user sees it. `AppModel.prompt` enforces it by cutting longer input, such as a paste.
 
@@ -562,7 +565,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
 | FR-14 | PNG step-down ladder 618 → 300, < 500 KB (§7) | Noise-fixture test |
 | FR-15 | `Sticker.accessibilityText` (§4, §7.3) | Unit test (150-scalar truncation) |
 | FR-16 | `LibraryStore` Keep with prompt, date, model (§4), ADR-0005 | `LibraryStore` tests |
-| FR-17 | Library grid, compact and expanded, newest first (§10) | `LibraryStore` order test; device checklist |
+| FR-17 | Library grid as the expanded landing screen, newest first; minimal compact layout if compact appears (§10), ADR-0017 | `LibraryStore` order test; device checklist |
 | FR-18 | `MSStickerView` cells (§10), ADR-0008 | Device checklist (A4) |
 | FR-19 | Context-menu Delete → `LibraryStore.delete` (§4) | `LibraryStore` test |
 | FR-20 | Empty state (§10) | Device checklist |
