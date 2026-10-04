@@ -248,9 +248,12 @@ Decoded fields: `data[0].b64_json` (required). `usage` is decoded as **optional*
 |---|---|---|
 | 200 | Key valid and the model is visible | Yes |
 | 401 | Invalid key | No — "That key isn't valid." |
-| 403 | Missing "List models: Read" permission, or org/region not permitted | No — "That key doesn't have permission. Check its permissions in OpenAI." |
+| 403 (any code other than `model_not_found`) | Missing "List models: Read" permission, or org/region not permitted | No — "That key doesn't have permission. Check its permissions in OpenAI." |
+| 403 with `code == "model_not_found"` | Same as 404. OpenAI doesn't document this case, but it is reported for project-scoped keys without access to the model | Yes, with the 404 warning |
 | 404 | Key valid but model not visible (org not verified, or wrong ID) | Yes, with warning: "Key saved, but this account can't use the image model yet." |
 | Offline / timeout | Can't check | Offer "Save anyway" |
+
+The call is treated as free: OpenAI's pricing bills only tokens, image outputs and tool calls, and the models endpoint has no listed price (OQ-6, resolved). Only validation reads `code`, and only on a 403. The generation path (§6) still maps every 403 to `.keyNotPermitted`.
 
 ---
 
@@ -546,7 +549,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
 | FR-1 | Settings sheet (§8, §10) | Device checklist |
 | FR-2 | `CredentialStore`, Keychain attributes (§8), ADR-0007 | Keychain round-trip test (simulator); secret-hygiene test |
 | FR-3 | Settings sheet last-4 display, Clear (§8) | `AppModel` tests; device checklist |
-| FR-4 | `OpenAIClient.validate` → `GET /v1/models/{id}` (§5.4), ADR-0009 | `OpenAIClient` stub tests (200/401/403/404/offline) |
+| FR-4 | `OpenAIClient.validate` → `GET /v1/models/{id}` (§5.4), ADR-0009 | `OpenAIClient` stub tests (200/401/403/403 `model_not_found`/404/offline) |
 | FR-5 | `AppModel` routing on `willBecomeActive` (§8) | `AppModel` test; acceptance criterion 1 |
 | FR-6 | Compose `TextField`, 200-char limit (§10) | `AppModel` test |
 | FR-7 | `StyleTemplate` (§9) | `StyleTemplate` tests; M1 |

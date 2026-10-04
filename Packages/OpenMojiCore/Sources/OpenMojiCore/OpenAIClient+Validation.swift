@@ -8,13 +8,15 @@ import Foundation
 public enum KeyValidationResult: Equatable, Sendable {
     /// 200: the key is valid and the image model is visible.
     case valid
-    /// 404: the key is valid but the model is not visible (org not verified,
-    /// or a wrong model ID). Save, with a warning.
+    /// 404, or 403 with error code `model_not_found` (reported for
+    /// project-scoped keys without model access): the key is valid but the
+    /// model is not visible (org not verified, or a wrong model ID). Save,
+    /// with a warning.
     case modelNotVisible
     /// 401: not a valid key. Do not save.
     case invalid
-    /// 403: the key lacks "List models: Read", or the org or region is not
-    /// permitted. Do not save.
+    /// Any other 403: the key lacks "List models: Read", or the org or region
+    /// is not permitted. Do not save.
     case notPermitted
     /// Offline, timeout, or any response that gives no verdict on the key
     /// (429, 5xx, other statuses). Offer "Save anyway".
@@ -47,18 +49,26 @@ extension OpenAIClient {
             return .couldNotCheck
         }
         do {
-            let (_, response) = try await session.data(for: request)
+            let (body, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { return .couldNotCheck }
             switch http.statusCode {
             case 200: return .valid
             case 401: return .invalid
-            case 403: return .notPermitted
+            case 403: return Self.errorCode(in: body) == "model_not_found" ? .modelNotVisible : .notPermitted
             case 404: return .modelNotVisible
             default: return .couldNotCheck
             }
         } catch {
             return .couldNotCheck
         }
+    }
+
+    /// `error.code` from an OpenAI error body, or `nil` when the body is not
+    /// that shape. Only this one field is read, so nothing the API echoes
+    /// back (the message can quote a masked key) is kept (NFR-6).
+    private static func errorCode(in body: Data) -> String? {
+        let object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        return (object?["error"] as? [String: Any])?["code"] as? String
     }
 
     private func makeValidationRequest(key: String) -> URLRequest? {

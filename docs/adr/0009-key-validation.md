@@ -8,7 +8,7 @@ FR-4 asks for a cheap authenticated call on save. The PRD's risk mitigation rest
 
 ## Decision
 - Grant the family key **Model capabilities: Request** plus **List models: Read**.
-- Validate with `GET /v1/models/{configured model ID}`. 401 means invalid; 403 means not permitted. 404 saves with a warning: valid key, model not visible, possibly an unverified org.
+- Validate with `GET /v1/models/{configured model ID}`. 401 means invalid; 403 means not permitted. 404 saves with a warning: valid key, model not visible, possibly an unverified org. A 403 whose error `code` is `model_not_found` (reported for project-scoped keys, undocumented by OpenAI) is treated like 404.
 - Offline offers "Save anyway".
 
 ## Alternatives
@@ -18,4 +18,4 @@ FR-4 asks for a cheap authenticated call on save. The PRD's risk mitigation rest
 ## Consequences
 - The key carries one extra read-only scope, a negligible risk increase.
 - Also detects a wrong model ID or missing org verification at setup.
-- Assumes the models endpoint is free; confirm on first use (open question).
+- Treats the models endpoint as free: OpenAI's pricing bills only tokens, image outputs and tool calls (OQ-6, resolved 2026-10-03).
