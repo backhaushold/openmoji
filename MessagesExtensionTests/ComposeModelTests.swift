@@ -8,7 +8,7 @@ import Testing
 
 @MainActor
 private func makeModel(key: String? = "test-fake-key-0000", prompt: String = "") -> AppModel {
-    let model = AppModel(credentials: InMemoryCredentialStore(key: key), generator: FakeGenerator())
+    let model = AppModel(credentials: InMemoryCredentialStore(key: key), generator: FakeGenerator(), library: FakeLibrary())
     model.prompt = prompt
     return model
 }
@@ -116,7 +116,7 @@ struct PromptLimitTests {
         // prompt has the same limit.
         let generator = FakeGenerator()
         await generator.enqueue(.success(makeProcessedSticker()), for: "a cat")
-        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator)
+        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator, library: FakeLibrary())
         model.prompt = "a cat"
         model.generate()
         if case .generating(let task) = model.state { await task.value }
@@ -204,7 +204,7 @@ struct CanGenerateTests {
         let generator = FakeGenerator()
         await generator.hold("a cat")
         await generator.enqueue(.success(makeProcessedSticker()), for: "a cat")
-        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator)
+        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator, library: FakeLibrary())
         model.prompt = "a cat"
         #expect(model.canGenerate)
 
@@ -222,7 +222,7 @@ struct CanGenerateTests {
     @Test func isEnabledAgainAfterACancel() async {
         let generator = FakeGenerator()
         await generator.hold("a cat")
-        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator)
+        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator, library: FakeLibrary())
         model.prompt = "a cat"
         model.generate()
         #expect(!model.canGenerate)
@@ -235,7 +235,7 @@ struct CanGenerateTests {
 
     @Test func generateDoesNothingWhenItIsDisabled() async {
         let generator = FakeGenerator()
-        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator)
+        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator, library: FakeLibrary())
         model.prompt = "   "
         model.generate()
         #expect(model.state == .idle)

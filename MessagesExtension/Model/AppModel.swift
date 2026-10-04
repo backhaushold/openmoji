@@ -1,6 +1,7 @@
 import Messages
 import Observation
 import OpenMojiCore
+import OSLog
 
 /// The extension's state machine (tech spec §2, §10; ADR-0008).
 ///
@@ -29,6 +30,12 @@ final class AppModel {
     }
 
     private(set) var state: State
+
+    private static let log = Logger(subsystem: "com.backhaushold.openmoji", category: "AppModel")
+
+    /// The kept stickers, newest first: what the library grid shows (FR-17).
+    /// Empty until the first `reloadLibrary()`.
+    private(set) var stickers: [Sticker] = []
 
     /// The most characters a prompt may have (FR-6). Counted as `Character`s,
     /// i.e. extended grapheme clusters, so what the user sees as one character
@@ -112,13 +119,18 @@ final class AppModel {
 
     @ObservationIgnored private let credentials: any CredentialStore
     @ObservationIgnored private let generator: any StickerGenerating
+    @ObservationIgnored private let library: any StickerLibrary
     /// Bumped whenever a generation starts or is abandoned, so a late result
     /// from an abandoned task is dropped.
     @ObservationIgnored private var generationID = 0
+    /// Bumped by every `reloadLibrary()`, so an older read that finishes late
+    /// can't overwrite a newer one.
+    @ObservationIgnored private var libraryLoadID = 0
 
-    init(credentials: any CredentialStore, generator: any StickerGenerating) {
+    init(credentials: any CredentialStore, generator: any StickerGenerating, library: any StickerLibrary) {
         self.credentials = credentials
         self.generator = generator
+        self.library = library
         state = .idle
         refreshKey()
     }
@@ -137,6 +149,26 @@ final class AppModel {
             state = .needsKey
             isComposing = false
         }
+    }
+
+    /// Re-reads the library into `stickers`. The grid calls it when it appears;
+    /// whatever changes the library (Keep, Delete) calls it afterwards so the
+    /// grid follows. A read that fails is logged and leaves the list as it was.
+    func reloadLibrary() async {
+        libraryLoadID += 1
+        let id = libraryLoadID
+        do {
+            let loaded = try await library.stickers()
+            guard id == libraryLoadID else { return }
+            stickers = loaded
+        } catch {
+            Self.log.error("Could not read the library: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// The PNG for `sticker`, for its `MSSticker` in the grid.
+    func fileURL(for sticker: Sticker) -> URL {
+        library.fileURL(for: sticker)
     }
 
     /// The library's "New sticker": opens Compose. Text entry only happens in

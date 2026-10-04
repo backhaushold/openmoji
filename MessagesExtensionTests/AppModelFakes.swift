@@ -65,3 +65,65 @@ func makeProcessedSticker(prompt: String = defaultTestPrompt) -> ProcessedSticke
         edge: 300
     )
 }
+
+/// A `StickerLibrary` over an in-memory list, which can fail its reads or hold
+/// one mid-flight, so tests control exactly when a read finishes. A read
+/// returns the list as it was when the read started.
+actor FakeLibrary: StickerLibrary {
+    struct ReadFailure: Error {}
+
+    private var stored: [Sticker]
+    private var failing = false
+    private var held = false
+    private var gate: CheckedContinuation<Void, Never>?
+    private(set) var readCount = 0
+
+    init(stickers: [Sticker] = []) {
+        stored = stickers
+    }
+
+    func set(_ stickers: [Sticker]) {
+        stored = stickers
+    }
+
+    func failReads(_ failing: Bool) {
+        self.failing = failing
+    }
+
+    /// The next `stickers()` suspends until `release()`.
+    func hold() {
+        held = true
+    }
+
+    func release() {
+        held = false
+        gate?.resume()
+        gate = nil
+    }
+
+    func stickers() async throws -> [Sticker] {
+        readCount += 1
+        let snapshot = stored
+        if held {
+            await withCheckedContinuation { gate = $0 }
+        }
+        if failing { throw ReadFailure() }
+        return snapshot
+    }
+
+    nonisolated func fileURL(for sticker: Sticker) -> URL {
+        URL(fileURLWithPath: "/fake-library").appendingPathComponent(sticker.fileName)
+    }
+}
+
+func makeSticker(prompt: String = defaultTestPrompt, createdAt: Date = Date(timeIntervalSince1970: 1_000_000)) -> Sticker {
+    Sticker(
+        id: UUID(),
+        prompt: prompt,
+        createdAt: createdAt,
+        modelID: "fake-model",
+        quality: "low",
+        pixelSize: 300,
+        byteCount: 4
+    )
+}

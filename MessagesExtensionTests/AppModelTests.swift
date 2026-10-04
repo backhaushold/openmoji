@@ -19,7 +19,7 @@ private struct Rig {
 private func makeRig(key: String? = fakeKey, prompt: String = defaultTestPrompt) -> Rig {
     let credentials = InMemoryCredentialStore(key: key)
     let generator = FakeGenerator()
-    let model = AppModel(credentials: credentials, generator: generator)
+    let model = AppModel(credentials: credentials, generator: generator, library: FakeLibrary())
     model.prompt = prompt
     return Rig(model: model, credentials: credentials, generator: generator)
 }
@@ -48,7 +48,7 @@ struct AppModelKeyRoutingTests {
     }
 
     @Test func anUnreadableKeychainRoutesToNeedsKey() {
-        let model = AppModel(credentials: UnreadableCredentialStore(), generator: FakeGenerator())
+        let model = AppModel(credentials: UnreadableCredentialStore(), generator: FakeGenerator(), library: FakeLibrary())
         #expect(model.state == .needsKey)
     }
 
@@ -142,7 +142,7 @@ struct AppModelRouteTests {
     }
 
     @Test func anUnreadableKeychainRoutesLikeNoKey() {
-        let model = AppModel(credentials: UnreadableCredentialStore(), generator: FakeGenerator())
+        let model = AppModel(credentials: UnreadableCredentialStore(), generator: FakeGenerator(), library: FakeLibrary())
         #expect(model.route == .compactSetUp)
         model.presentationStyle = .expanded
         #expect(model.route == .librarySetUp)

@@ -5,7 +5,6 @@ import SwiftUI
 /// Compose; with no key it is "Set up OpenMoji", which opens Settings. The
 /// library is never gated on the key, since browsing and sending stickers need
 /// none (NFR-10).
-/// The library grid (FR-17) goes in the placeholder.
 struct LibraryView: View {
     let model: AppModel
     let needsSetUp: Bool
@@ -14,11 +13,7 @@ struct LibraryView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("Your stickers will appear here.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            StickerGridView(model: model)
 
             Button {
                 if needsSetUp { onSetUp() } else { model.startNewSticker() }
