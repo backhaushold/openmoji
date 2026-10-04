@@ -38,7 +38,7 @@ These do not change any locked decision, but the PRD text should be corrected.
 | A3 | Text entry works in the expanded Messages-context view on iPadOS 26 (Apple documents expanded as the place for text input) | Verified in M3 shell build before feature work |
 | A4 | `MSStickerView` supports tap-to-insert and peel-and-drag in both compact and expanded styles (docs describe peel-and-drag but not per-style) | Fallback: `activeConversation.insert(_:)` on tap; verified in M3 |
 | A5 | `MSSticker` accepts file URLs inside the App Group container | Fallback: copy to the extension's temp dir before creating the sticker; verified in M3 |
-| A6 | App Store Connect internal-testing groups can be set to auto-distribute new builds | REL-5 falls back to an explicit API call (§12.5) |
+| A6 | App Store Connect internal-testing groups can be set to auto-distribute new builds (confirmed 2026-10-03, OQ-13) | REL-5 falls back to an explicit API call (§12.5) |
 | A7 | The same Apple Distribution certificate (team `AB5S94XWRQ`) used by Sagelet can sign OpenMoji | Create a second distribution cert |
 
 ---
