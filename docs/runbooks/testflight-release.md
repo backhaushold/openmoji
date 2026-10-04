@@ -315,10 +315,10 @@ Bead: `openmoji-9yf`.
    distribution**, Create
    ([Apple: Add internal testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/)).
    Automatic distribution is the primary REL-5 mechanism
-   ([ADR-0015](../adr/0015-app-store-connect-api-tooling.md)); whether it
-   behaves as hoped for CLI uploads is OQ-13 (`openmoji-ppj`). Record the
-   outcome there. If it does not work, `asc.swift ensure-in-group` covers it
-   and nothing here changes.
+   ([ADR-0015](../adr/0015-app-store-connect-api-tooling.md)), and it works
+   for CLI uploads: build 51 was already in the group when the lane checked
+   (OQ-13, resolved 2026-10-03). `asc.swift ensure-in-group` still checks, and
+   adds the build if it is ever missing.
 
 3. **Add the family.** Users and Access, Users, **+**, invite each person. The
    role must be one Apple accepts for internal testers: Account Holder, Admin,
@@ -334,8 +334,17 @@ Bead: `openmoji-9yf`.
    on their iPad set Settings, Apple Account, **Media & Purchases** to an adult
    tester's Apple Account (one in the `Family` group), then install TestFlight
    and the build from it. Their iCloud and Messages stay theirs, and the
-   extension runs in their Messages as usual. Updates and the 90-day reinstall
-   need that adult account in TestFlight on the iPad. External testing and
+   extension runs in their Messages as usual.
+
+   With Screen Time on, Media & Purchases sign-out is greyed out. As the
+   parent, on their iPad: Screen Time, Content & Privacy Restrictions,
+   **Account Changes**, **Allow**; switch Media & Purchases to your account;
+   install from TestFlight; switch back to theirs; set Account Changes back to
+   **Don't Allow**. Switching back keeps Ask to Buy in force (purchases would
+   otherwise go to your account). The installed build keeps running after the
+   switch back (checked with build 51, 2026-10-03), but TestFlight itself is
+   unusable on their account, so every new build and the 90-day reinstall
+   repeat these steps. External testing and
    Ad Hoc installs were rejected: the first is out of PRD scope (internal
    testers only) and age-limited too, the second is a second distribution
    route for one tester.
