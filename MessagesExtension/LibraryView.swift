@@ -20,23 +20,17 @@ struct LibraryView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if needsSetUp {
-                Button(action: onSetUp) {
-                    Label("Set up OpenMoji", systemImage: "key")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityHint("Opens settings to add your OpenAI key")
-            } else {
-                Button { model.startNewSticker() } label: {
-                    Label("New sticker", systemImage: "plus")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityHint("Opens the screen to describe a sticker")
+            Button {
+                if needsSetUp { onSetUp() } else { model.startNewSticker() }
+            } label: {
+                Label(needsSetUp ? "Set up OpenMoji" : "New sticker", systemImage: needsSetUp ? "key" : "plus")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityHint(
+                needsSetUp ? "Opens settings to add your OpenAI key" : "Opens the screen to describe a sticker"
+            )
         }
         .padding()
     }
