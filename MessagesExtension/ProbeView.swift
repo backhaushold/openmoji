@@ -29,7 +29,7 @@
         private(set) var bundle: Outcome = .failed("not prepared yet")
         private(set) var events: [String] = []
 
-        @ObservationIgnored private let requestStyle: @MainActor (MSMessagesAppPresentationStyle) -> Void
+        @ObservationIgnored let requestStyle: @MainActor (MSMessagesAppPresentationStyle) -> Void
         @ObservationIgnored private let activeConversation: @MainActor () -> MSConversation?
 
         init(
@@ -38,10 +38,6 @@
         ) {
             self.requestStyle = requestStyle
             self.activeConversation = activeConversation
-        }
-
-        func request(_ style: MSMessagesAppPresentationStyle) {
-            requestStyle(style)
         }
 
         func note(_ text: String) {
@@ -225,7 +221,7 @@
                         .font(.subheadline)
                     Spacer()
                     Button(expanded ? "Request compact" : "Request expanded") {
-                        probe.request(expanded ? .compact : .expanded)
+                        probe.requestStyle(expanded ? .compact : .expanded)
                     }
                     .buttonStyle(.bordered)
                     Button("Close probe", action: onClose)
@@ -288,9 +284,6 @@
                             .contextMenu {
                                 Button("Probe menu item", systemImage: "hand.tap") {
                                     probe.note("A: context menu item chosen")
-                                }
-                                Button("Probe destructive item", systemImage: "trash", role: .destructive) {
-                                    probe.note("A: destructive context menu item chosen")
                                 }
                             }
                     } else {
