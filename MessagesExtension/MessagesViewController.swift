@@ -24,18 +24,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             validator: OpenAIClient(),
             onCleared: { [model] in model.refreshKey() }
         )
-        #if DEBUG
-            // Throwaway probe for openmoji-25h; remove before M4 features land.
-            let probe = ProbeModel(
-                requestStyle: { [weak self] in self?.requestPresentationStyle($0) },
-                activeConversation: { [weak self] in self?.activeConversation }
-            )
-            let host = UIHostingController(rootView: ProbeEntry(probe: probe, model: model) {
-                RootView(model: model, settings: settings)
-            })
-        #else
-            let host = UIHostingController(rootView: RootView(model: model, settings: settings))
-        #endif
+        let host = UIHostingController(rootView: RootView(model: model, settings: settings))
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(host.view)
