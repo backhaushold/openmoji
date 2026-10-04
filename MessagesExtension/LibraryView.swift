@@ -1,16 +1,16 @@
 import SwiftUI
 
-/// Compact (tech spec §8, §10): the library area and one action. Ready for a
-/// prompt, the action is "New sticker"; with no key it is "Set up OpenMoji".
-/// Either button asks for the expanded style: there is no text field here
-/// (Apple recommends against text entry in compact). "New sticker" then lands
-/// on Compose; with no key, expanded lands on the library, whose "Set up
-/// OpenMoji" opens Settings (FR-5, ADR-0017). The library is never gated on
-/// the key, since sending stickers needs none (NFR-10).
+/// The expanded landing screen (tech spec §10, ADR-0017): the library area and
+/// one action. Ready for a prompt, the action is "New sticker", which opens
+/// Compose; with no key it is "Set up OpenMoji", which opens Settings. The
+/// library is never gated on the key, since browsing and sending stickers need
+/// none (NFR-10).
 /// The library grid (FR-17) goes in the placeholder.
-struct CompactHomeView: View {
+struct LibraryView: View {
     let model: AppModel
     let needsSetUp: Bool
+    /// Opens the Settings sheet (`RootView` owns it, as for Compose's gear).
+    let onSetUp: () -> Void
 
     var body: some View {
         VStack(spacing: 12) {
@@ -21,13 +21,13 @@ struct CompactHomeView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if needsSetUp {
-                Button { model.startSetUp() } label: {
+                Button(action: onSetUp) {
                     Label("Set up OpenMoji", systemImage: "key")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .accessibilityHint("Opens the full screen view to add your OpenAI key")
+                .accessibilityHint("Opens settings to add your OpenAI key")
             } else {
                 Button { model.startNewSticker() } label: {
                     Label("New sticker", systemImage: "plus")
@@ -35,7 +35,7 @@ struct CompactHomeView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .accessibilityHint("Opens the full screen view to describe a sticker")
+                .accessibilityHint("Opens the screen to describe a sticker")
             }
         }
         .padding()

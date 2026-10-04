@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Switches on `AppModel.route`. Idle is real (Compose when expanded, "New
-/// sticker" when compact), and so are Generating and Error; Preview is a
-/// placeholder for a separate bead. Settings is real: expanded with no key
-/// opens it directly (FR-5), compact with no key offers "Set up OpenMoji", and
-/// Compose's gear and the error's Settings button open it as a sheet.
+/// Switches on `AppModel.route`. Idle is real (the library when expanded, then
+/// Compose after "New sticker"; "New sticker" alone when compact), and so are
+/// Generating and Error; Preview is a placeholder for a separate bead.
+/// Settings is a sheet, opened by the library's "Set up OpenMoji" when there is
+/// no key (FR-5), Compose's gear and the error's Settings button.
 struct RootView: View {
     let model: AppModel
     let settings: SettingsModel
@@ -13,12 +13,10 @@ struct RootView: View {
 
     var body: some View {
         content
-            .sheet(isPresented: $showingSettings) {
+            // However the sheet closes (Done or a swipe), pick up a key saved in
+            // it: needs-key → idle, from "Set up OpenMoji" to "New sticker".
+            .sheet(isPresented: $showingSettings, onDismiss: model.refreshKey) {
                 SettingsView(model: settings) { showingSettings = false }
-            }
-            // Clearing the key routes to needs-key, whose Settings replaces the sheet.
-            .onChange(of: model.state == .needsKey) { _, needsKey in
-                if needsKey { showingSettings = false }
             }
     }
 
@@ -28,9 +26,10 @@ struct RootView: View {
             CompactHomeView(model: model, needsSetUp: false)
         case .compactSetUp:
             CompactHomeView(model: model, needsSetUp: true)
-        case .settings:
-            // Done, once a key is saved, picks up the new key: needs-key → idle.
-            SettingsView(model: settings) { model.refreshKey() }
+        case .library:
+            LibraryView(model: model, needsSetUp: false) { showingSettings = true }
+        case .librarySetUp:
+            LibraryView(model: model, needsSetUp: true) { showingSettings = true }
         case .compose:
             ComposeView(model: model) { showingSettings = true }
         case .generating:

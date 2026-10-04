@@ -47,8 +47,8 @@ final class MessagesViewController: MSMessagesAppViewController {
         model.presentationStyle = presentationStyle
     }
 
-    /// Re-reads whether a key is stored, so no key routes to Set up in compact
-    /// and Settings in expanded, and a key saved or cleared meanwhile is picked
+    /// Re-reads whether a key is stored, so no key shows "Set up OpenMoji" in
+    /// place of "New sticker", and a key saved or cleared meanwhile is picked
     /// up (FR-5, tech spec §8). `AppModel` also does this once in `init`.
     override func willBecomeActive(with conversation: MSConversation) {
         super.willBecomeActive(with: conversation)
