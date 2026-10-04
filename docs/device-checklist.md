@@ -39,8 +39,10 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
   - Notes:
 
 - [ ] **AC-4** Kept stickers send by tap and by peel-and-drag onto a bubble, and appear correctly on the recipient's iPhone.
-  - Source: AC-4; FR-17, FR-18, A-4; recipient display in [REC-1](#4-rendering)
-  - How: in a Messages conversation, tap a kept sticker (it goes into the compose field, then send). Then touch-and-hold a sticker, peel it and drop it onto an existing bubble. Do both from the compact and the expanded view. Then confirm the recipient result under REC-1.
+  - Source: AC-4; FR-17, FR-18, A-4; recipient display in [REC-1](#4-rendering); [ADR-0017](adr/0017-expanded-first-layout.md)
+  - How: in a Messages conversation, in the expanded view, tap a kept sticker (it goes into the compose field, then send). Then touch-and-hold a sticker, peel it and drop it onto an existing bubble. Then confirm the recipient result under REC-1.
+  - Expanded test [ ]
+  - Compact test (N/A: unreachable on iPadOS 26 per [ADR-0017](adr/0017-expanded-first-layout.md))
   - Notes:
 
 - [ ] **AC-5** Regenerate produces a new image from the same prompt without losing the library.
@@ -83,10 +85,11 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
   - How: expand OpenMoji in Messages and tap the prompt field. The keyboard opens and typed text (software keyboard, and dictation or a hardware keyboard if available) appears in the field without the extension collapsing or closing. Type up to the 200-character limit and see the counter.
   - Notes:
 
-- [ ] **A-4 / FR-18** `MSStickerView` supports tap-to-insert and peel-and-drag in both compact and expanded styles (FR-18: library stickers send by tap and by peel-and-drag).
-  - Source: A-4; FR-18 (§13 "Device checklist (A4)"); OQ-10, [ADR-0008](adr/0008-swiftui-with-msstickerview.md)
-  - How: for each of compact and expanded, tap a library sticker (it is inserted into the compose field) and peel-and-drag one onto a bubble. Also touch-and-hold a cell: the context menu (Delete) may open, but it must not stop the peel gesture from working. If tap doesn't insert in one style, the fallback in ADR-0008 (`activeConversation?.insert`) is needed.
-  - Compact tap [ ] · compact peel [ ] · expanded tap [ ] · expanded peel [ ] · context menu vs peel [ ]
+- [ ] **A-4 / FR-18** `MSStickerView` supports tap-to-insert and peel-and-drag in the expanded style (FR-18: library stickers send by tap and by peel-and-drag).
+  - Source: A-4; FR-18 (§13 "Device checklist (A4)"); OQ-10, [ADR-0008](adr/0008-swiftui-with-msstickerview.md), [ADR-0017](adr/0017-expanded-first-layout.md)
+  - How: in the expanded view, tap a library sticker (it is inserted into the compose field) and peel-and-drag one onto a bubble. Also touch-and-hold a cell: the context menu (Delete) may open, but it must not stop the peel gesture from working. If tap doesn't insert, the fallback in ADR-0008 (`activeConversation?.insert`) is needed.
+  - Expanded tap [ ] · expanded peel [ ] · context menu vs peel [ ]
+  - Compact tap (N/A: unreachable on iPadOS 26 per [ADR-0017](adr/0017-expanded-first-layout.md))
   - Notes:
 
 - [ ] **A-5** `MSSticker` accepts file URLs inside the App Group container.
@@ -99,13 +102,17 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
 ## 3. Accessibility and offline use
 
 - [ ] **NFR-9 (VoiceOver)** VoiceOver labels cover every control, and each sticker cell's label is its description.
-  - Source: NFR-9 (§10, §13), FR-15
-  - How: turn on VoiceOver (Settings > Accessibility). Swipe through compact, expanded Compose, Generating, Preview, Error and the Settings sheet: every control (prompt field, Generate, gear, Cancel, Keep, Regenerate, Try again, Save, Clear) has a meaningful spoken label. Each sticker cell reads its prompt as its description (the first 150 characters of the prompt).
+  - Source: NFR-9 (§10, §13), FR-15, [ADR-0017](adr/0017-expanded-first-layout.md)
+  - How: turn on VoiceOver (Settings > Accessibility). Swipe through the expanded library, Compose, Generating, Preview, Error and the Settings sheet: every control (prompt field, Generate, gear, Cancel, Keep, Regenerate, Try again, Save, Clear) has a meaningful spoken label. Each sticker cell reads its prompt as its description (the first 150 characters of the prompt).
+  - Expanded test [ ]
+  - Compact test (N/A: unreachable on iPadOS 26 per [ADR-0017](adr/0017-expanded-first-layout.md))
   - Notes:
 
 - [ ] **NFR-9 (Dynamic Type)** Dynamic Type covers every control.
-  - Source: NFR-9 (§10, §13)
-  - How: set the text size to the largest accessibility size (Settings > Accessibility > Display & Text Size > Larger Text) and also check the smallest. In compact, expanded Compose, Preview, Error and the Settings sheet nothing is cut off or overlapping and every control is still reachable.
+  - Source: NFR-9 (§10, §13), [ADR-0017](adr/0017-expanded-first-layout.md)
+  - How: set the text size to the largest accessibility size (Settings > Accessibility > Display & Text Size > Larger Text) and also check the smallest. In the expanded library, Compose, Preview, Error and the Settings sheet nothing is cut off or overlapping and every control is still reachable.
+  - Expanded test [ ]
+  - Compact test (N/A: unreachable on iPadOS 26 per [ADR-0017](adr/0017-expanded-first-layout.md))
   - Notes:
 
 - [ ] **NFR-10** Library browsing, insert and drag need no network.
@@ -141,14 +148,18 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
   - How: after Save, the field is replaced by `•••• last4` matching the end of the key, and the full key never comes back into a text field (reopen Settings to confirm). Tap Clear: the key is gone, and opening the expanded view goes straight to Settings again (FR-5).
   - Notes:
 
-- [ ] **FR-17** The library grid shows in compact and expanded, newest first.
-  - Source: FR-17 (§13, §10)
-  - How: Keep three stickers one after another. In both compact and expanded, the grid lists them newest first.
+- [ ] **FR-17** The library grid shows in expanded, newest first.
+  - Source: FR-17 (§13, §10), [ADR-0017](adr/0017-expanded-first-layout.md)
+  - How: Keep three stickers one after another. In the expanded view, the grid lists them newest first.
+  - Expanded test [ ]
+  - Compact test (N/A: unreachable on iPadOS 26 per [ADR-0017](adr/0017-expanded-first-layout.md))
   - Notes:
 
 - [ ] **FR-20** An empty library shows an empty state.
-  - Source: FR-20 (§13, §10)
-  - How: on a fresh install (before any Keep), the compact view shows the empty state (and with no key also a "Set up OpenMoji" button, §8). Delete every sticker and it returns.
+  - Source: FR-20 (§13, §10), [ADR-0017](adr/0017-expanded-first-layout.md)
+  - How: on a fresh install (before any Keep), the expanded view shows the empty state (and with no key also a "Set up OpenMoji" button, §8). Delete every sticker and it returns.
+  - Expanded test [ ]
+  - Compact test (N/A: unreachable on iPadOS 26 per [ADR-0017](adr/0017-expanded-first-layout.md))
   - Notes:
 
 - [ ] **FR-21** "Reuse prompt" on a library cell's context menu. *Could* priority: only if built; otherwise mark N/A.
