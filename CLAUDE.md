@@ -119,6 +119,8 @@ xcodebuild test -project OpenMoji.xcodeproj -scheme OpenMojiMessagesTests \
   `scripts/`, `Makefile`, `Package.swift` or `.github/` (the workflow included) runs the full pipeline. For a docs-only
   change, run at least `gitleaks detect --redact --no-banner`.
 - UI-free app code goes in `MessagesExtension/Model/` (it is compiled into the test bundle); views stay out of it.
+- When the user runs `make testflight`, have them run it in a normal Terminal (it can wait 45 min for processing) as
+  `make testflight 2>&1 | tee build/release/testflight-<N>.log` (`<N>` = `git rev-list --count HEAD`), and watch that log.
 - Do **not** run `make testflight`, `make testflight-status` or `make op-check`: they are for the release Mac and need
   1Password and App Store Connect secrets. `make release-test` is the safe one. Never read or open `.env`
   (the 1Password service-account token). See `docs/runbooks/testflight-release.md`.
