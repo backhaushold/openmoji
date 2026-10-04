@@ -15,7 +15,8 @@ import OpenMojiCore
 @Observable
 final class AppModel {
     enum State: Equatable {
-        /// No usable key: the expanded view opens Settings (FR-5).
+        /// No usable key: the library shows "Set up OpenMoji" in place of "New
+        /// sticker" (FR-5, NFR-10).
         case needsKey
         /// Ready for a prompt.
         case idle
@@ -69,17 +70,26 @@ final class AppModel {
     /// Mirrors the host's presentation style; set by `MessagesViewController`.
     var presentationStyle: MSMessagesAppPresentationStyle = .compact
 
+    /// Whether the user has opened Compose from the library (ADR-0017). Expanded
+    /// and idle shows the library until then; once set, idle shows Compose, so
+    /// Cancel, a failure and Edit description all come back to the prompt.
+    /// Back (`closeCompose()`) and having no key clear it.
+    private(set) var isComposing = false
+
     /// What `RootView` shows, from the state and the presentation style (tech
-    /// spec §8 Routing, §10; FR-5). Sending stickers needs no key, so compact
-    /// always has the library; only its action changes (NFR-10).
+    /// spec §8 Routing, §10; FR-5, ADR-0017). Sending stickers needs no key, so
+    /// the library shows with or without one; only its action changes (NFR-10).
     enum Route: Equatable {
         /// Compact, ready: the library and "New sticker".
         case compactHome
         /// Compact, no key: the library and "Set up OpenMoji".
         case compactSetUp
-        /// Expanded, no key: straight to Settings instead of the prompt.
-        case settings
-        /// Expanded, ready: the prompt.
+        /// Expanded, ready: the library, the landing screen, and "New sticker".
+        case library
+        /// Expanded, no key: the library and "Set up OpenMoji", which opens
+        /// Settings.
+        case librarySetUp
+        /// Expanded, ready, after "New sticker": the prompt.
         case compose
         /// Generating adapts to the style inside its view (one view, so it
         /// keeps its state when the host expands or collapses), and so does the
@@ -92,8 +102,8 @@ final class AppModel {
     var route: Route {
         let expanded = presentationStyle == .expanded
         switch state {
-        case .needsKey: return expanded ? .settings : .compactSetUp
-        case .idle: return expanded ? .compose : .compactHome
+        case .needsKey: return expanded ? .librarySetUp : .compactSetUp
+        case .idle: return expanded ? (isComposing ? .compose : .library) : .compactHome
         case .generating: return .generating
         case .preview: return .preview
         case .failed(let error, _): return .failed(error)
@@ -116,25 +126,37 @@ final class AppModel {
     /// Re-reads whether a key is stored; `MessagesViewController` calls it on
     /// `willBecomeActive` (FR-5), so a key saved or cleared since the last time
     /// the extension was active is picked up. No key (or an unreadable Keychain, as
-    /// generating would fail the same way) routes to `needsKey` and abandons
-    /// any generation; a key moves `needsKey` on to `idle`.
+    /// generating would fail the same way) routes to `needsKey`, abandons
+    /// any generation and leaves Compose; a key moves `needsKey` on to `idle`,
+    /// the library.
     func refreshKey() {
         if (try? credentials.load()) != nil {
             if state == .needsKey { state = .idle }
         } else {
             cancel()
             state = .needsKey
+            isComposing = false
         }
     }
 
-    /// Compact's "New sticker": text entry only happens in expanded, so ask
-    /// the host to expand (tech spec §10).
+    /// The library's "New sticker": opens Compose. Text entry only happens in
+    /// expanded, so in compact it also asks the host to expand, and Compose
+    /// shows once the host reports it (tech spec §10).
     func startNewSticker() {
-        requestExpandedStyle()
+        isComposing = true
+        if presentationStyle != .expanded { requestExpandedStyle() }
+    }
+
+    /// Compose's back button: returns to the library with the prompt kept.
+    /// Only from the prompt itself; the other screens have their own exits.
+    func closeCompose() {
+        guard state == .idle else { return }
+        isComposing = false
     }
 
     /// Compact's "Set up OpenMoji" (no key): Settings is in expanded, so ask
-    /// the host to expand. With no key, expanded opens straight to it.
+    /// the host to expand. Expanded with no key shows the library with its own
+    /// "Set up OpenMoji", which opens Settings.
     func startSetUp() {
         requestExpandedStyle()
     }
@@ -145,6 +167,7 @@ final class AppModel {
     func generate() {
         guard canGenerate else { return }
         let text = prompt
+        isComposing = true
 
         generationID += 1
         let id = generationID

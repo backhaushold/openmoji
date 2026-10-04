@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Expanded Compose (tech spec §10; FR-6): the prompt field with its
 /// 200-character limit and counter, Generate, and the gear that opens
-/// Settings. The library grid goes below, in the placeholder.
+/// Settings, and the back button to the library (ADR-0017).
 ///
 /// The limit itself lives in `AppModel.prompt`, so the field can't go over it
 /// however the text arrives (typing, paste, dictation). Text styles only, so
@@ -26,7 +26,6 @@ struct ComposeView: View {
                 header
                 promptField
                 generateButton
-                libraryPlaceholder
             }
             .padding()
         }
@@ -35,10 +34,17 @@ struct ComposeView: View {
 
     private var header: some View {
         HStack {
+            Button { model.closeCompose() } label: {
+                Label("Stickers", systemImage: "chevron.backward")
+                    .labelStyle(.iconOnly)
+                    .font(.title3)
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityHint("Goes back to your stickers")
             Text("OpenMoji")
                 .font(.headline)
+                .frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader)
-            Spacer()
             Button(action: onShowSettings) {
                 Label("Settings", systemImage: "gearshape")
                     .labelStyle(.iconOnly)
@@ -99,15 +105,5 @@ struct ComposeView: View {
         .controlSize(.large)
         .disabled(!model.canGenerate)
         .accessibilityHint("Makes a sticker from your description")
-    }
-
-    /// Stands in until the library grid (FR-17) lands below the prompt.
-    private var libraryPlaceholder: some View {
-        Text("Your stickers will appear here.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, minHeight: 160)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
     }
 }

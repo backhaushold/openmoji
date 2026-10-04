@@ -3,9 +3,10 @@ import SwiftUI
 /// Compact (tech spec §8, §10): the library area and one action. Ready for a
 /// prompt, the action is "New sticker"; with no key it is "Set up OpenMoji".
 /// Either button asks for the expanded style: there is no text field here
-/// (Apple recommends against text entry in compact), and expanded opens the
-/// prompt, or Settings when there is no key (FR-5). The library is never
-/// gated on the key, since sending stickers needs none (NFR-10).
+/// (Apple recommends against text entry in compact). "New sticker" then lands
+/// on Compose; with no key, expanded lands on the library, whose "Set up
+/// OpenMoji" opens Settings (FR-5, ADR-0017). The library is never gated on
+/// the key, since sending stickers needs none (NFR-10).
 /// The library grid (FR-17) goes in the placeholder.
 struct CompactHomeView: View {
     let model: AppModel

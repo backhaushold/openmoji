@@ -36,7 +36,7 @@ private func settle(_ model: AppModel) async {
     await inFlightTask(of: model)?.value
 }
 
-/// No key routes to Settings (FR-5).
+/// No key routes to needs-key, the library with "Set up OpenMoji" (FR-5).
 @MainActor
 struct AppModelKeyRoutingTests {
     @Test func startsInNeedsKeyWhenNoKeyIsStored() {
@@ -123,7 +123,8 @@ private final class ExpandRequests {
 }
 
 /// What the root view shows for a key and a presentation style (tech spec §8
-/// Routing, §10; FR-5, NFR-10). `refreshKey()` is what `willBecomeActive` calls.
+/// Routing, §10; FR-5, NFR-10, ADR-0017). `refreshKey()` is what
+/// `willBecomeActive` calls.
 @MainActor
 struct AppModelRouteTests {
     @Test func noKeyInCompactShowsTheLibraryWithSetUp() {
@@ -133,17 +134,18 @@ struct AppModelRouteTests {
         #expect(model.route == .compactSetUp)
     }
 
-    @Test func noKeyInExpandedOpensSettingsNotTheCompose() {
+    @Test func noKeyInExpandedShowsTheLibraryWithSetUpNotSettingsOrCompose() {
         let model = makeRig(key: nil).model
         model.presentationStyle = .expanded
-        #expect(model.route == .settings)
+        #expect(model.state == .needsKey)
+        #expect(model.route == .librarySetUp)
     }
 
     @Test func anUnreadableKeychainRoutesLikeNoKey() {
         let model = AppModel(credentials: UnreadableCredentialStore(), generator: FakeGenerator())
         #expect(model.route == .compactSetUp)
         model.presentationStyle = .expanded
-        #expect(model.route == .settings)
+        #expect(model.route == .librarySetUp)
     }
 
     @Test func aKeyInCompactShowsTheLibraryWithNewSticker() {
@@ -152,16 +154,17 @@ struct AppModelRouteTests {
         #expect(model.route == .compactHome)
     }
 
-    @Test func aKeyInExpandedOpensCompose() {
+    @Test func aKeyInExpandedLandsOnTheLibraryNotCompose() {
         let model = makeRig().model
         model.presentationStyle = .expanded
-        #expect(model.route == .compose)
+        #expect(model.state == .idle)
+        #expect(model.route == .library)
     }
 
     @Test func theRouteFollowsThePresentationStyle() {
         let model = makeRig(key: nil).model
         model.presentationStyle = .expanded
-        #expect(model.route == .settings)
+        #expect(model.route == .librarySetUp)
         model.presentationStyle = .compact
         #expect(model.route == .compactSetUp)
     }
@@ -178,7 +181,7 @@ struct AppModelRouteTests {
         #expect(model.route == .compactSetUp)
 
         model.presentationStyle = .expanded
-        #expect(model.route == .settings)
+        #expect(model.route == .librarySetUp)
     }
 
     @Test func setUpIsSafeBeforeTheHostSetsTheRequest() {
@@ -192,7 +195,7 @@ struct AppModelRouteTests {
         try rig.credentials.save(fakeKey)
 
         rig.model.refreshKey()
-        #expect(rig.model.route == (style == .expanded ? .compose : .compactHome))
+        #expect(rig.model.route == (style == .expanded ? .library : .compactHome))
     }
 
     @Test(arguments: [MSMessagesAppPresentationStyle.compact, .expanded])
@@ -202,19 +205,113 @@ struct AppModelRouteTests {
         try rig.credentials.clear()
 
         rig.model.refreshKey()
-        #expect(rig.model.route == (style == .expanded ? .settings : .compactSetUp))
+        #expect(rig.model.route == (style == .expanded ? .librarySetUp : .compactSetUp))
     }
 
     @Test func becomingActiveWithNothingChangedKeepsTheRoute() {
         let withKey = makeRig().model
         withKey.presentationStyle = .expanded
         withKey.refreshKey()
-        #expect(withKey.route == .compose)
+        #expect(withKey.route == .library)
 
         let noKey = makeRig(key: nil).model
         noKey.presentationStyle = .expanded
         noKey.refreshKey()
-        #expect(noKey.route == .settings)
+        #expect(noKey.route == .librarySetUp)
+    }
+
+    @Test func newStickerOpensComposeWhenExpandedWithoutAskingForTheStyle() {
+        let model = makeRig().model
+        model.presentationStyle = .expanded
+        let requests = ExpandRequests()
+        model.requestExpandedStyle = { requests.record() }
+        #expect(model.route == .library)
+
+        model.startNewSticker()
+        #expect(model.route == .compose)
+        #expect(model.state == .idle)
+        #expect(requests.count == 0)
+    }
+
+    @Test func newStickerInCompactAsksToExpandAndComposeShowsOnceExpanded() {
+        let model = makeRig().model
+        let requests = ExpandRequests()
+        model.requestExpandedStyle = { requests.record() }
+
+        model.startNewSticker()
+        #expect(requests.count == 1)
+        #expect(model.route == .compactHome)
+
+        model.presentationStyle = .expanded
+        #expect(model.route == .compose)
+    }
+
+    @Test func backFromComposeReturnsToTheLibraryWithThePromptKept() {
+        let model = makeRig(prompt: "a brave fox").model
+        model.presentationStyle = .expanded
+        model.startNewSticker()
+        #expect(model.route == .compose)
+
+        model.closeCompose()
+        #expect(model.route == .library)
+        #expect(model.prompt == "a brave fox")
+
+        model.startNewSticker()
+        #expect(model.route == .compose)
+    }
+
+    @Test func backOnlyActsFromThePrompt() async throws {
+        let rig = makeRig(prompt: "a brave fox")
+        rig.model.presentationStyle = .expanded
+        await rig.generator.hold("a brave fox")
+        await rig.generator.enqueue(.success(makeProcessedSticker(prompt: "a brave fox")), for: "a brave fox")
+        rig.model.startNewSticker()
+        rig.model.generate()
+        let task = try #require(inFlightTask(of: rig.model))
+
+        rig.model.closeCompose()
+        #expect(rig.model.route == .generating)
+
+        await rig.generator.release("a brave fox")
+        await task.value
+        rig.model.closeCompose()
+        #expect(rig.model.route == .preview)
+    }
+
+    @Test func aGenerationCancelledOrFailedLandsBackOnComposeNotTheLibrary() async throws {
+        let rig = makeRig(prompt: "a brave fox")
+        rig.model.presentationStyle = .expanded
+        await rig.generator.hold("a brave fox")
+        await rig.generator.enqueue(.failure(.offline), for: "a brave fox")
+        rig.model.startNewSticker()
+        rig.model.generate()
+        let abandoned = try #require(inFlightTask(of: rig.model))
+        rig.model.cancel()
+        #expect(rig.model.route == .compose)
+
+        await rig.generator.release("a brave fox")
+        await abandoned.value
+        await rig.generator.enqueue(.failure(.offline), for: "a brave fox")
+        rig.model.generate()
+        await settle(rig.model)
+        #expect(rig.model.route == .failed(.offline))
+        rig.model.dismissError()
+        #expect(rig.model.route == .compose)
+    }
+
+    @Test func clearingTheKeyWhileComposingLeavesComposeAndSavingOneReturnsToTheLibrary() throws {
+        let rig = makeRig()
+        rig.model.presentationStyle = .expanded
+        rig.model.startNewSticker()
+        #expect(rig.model.route == .compose)
+
+        try rig.credentials.clear()
+        rig.model.refreshKey()
+        #expect(rig.model.route == .librarySetUp)
+
+        try rig.credentials.save(fakeKey)
+        rig.model.refreshKey()
+        #expect(rig.model.route == .library)
     }
 
     @Test(arguments: [MSMessagesAppPresentationStyle.compact, .expanded])
