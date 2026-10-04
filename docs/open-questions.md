@@ -19,7 +19,7 @@ Resolved items stay listed so the history is visible. "Blocks" names the earlies
 
 | ID | Question | Blocks | Default / proposal |
 |---|---|---|---|
-| OQ-6 | Is `GET /v1/models/{id}` free of charge, and does it return 404 (not 403) for a model the org can't use yet? | M4 (FR-4) | Assume free; check the OpenAI usage dashboard after the first validation call and adjust the §5.4 table |
+| OQ-6 | Is `GET /v1/models/{id}` free of charge, and does it return 404 (not 403) for a model the org can't use yet? | — | **Resolved** 2026-10-03: treat the call as free (OpenAI's pricing bills only tokens, image outputs and tool calls; the endpoint has no listed price). OpenAI doesn't document the status for a model the key can't use, so 404 stays "save with warning", and 403 with `code == "model_not_found"` (reported for project-scoped keys) is handled the same way; any other 403 still refuses (tech spec §5.4, [ADR-0009](adr/0009-key-validation.md)). Optional check: the usage dashboard after the first key save |
 | OQ-7 | Is the OpenAI organization verified for GPT Image 2.5? | — | **Resolved** 2026-10-02: yes, the organization is verified (confirmed by the family admin) |
 | OQ-8 | Pin the dated snapshot `gpt-image-2.5-flare-2026-09-08` or use the moving alias `gpt-image-2.5-flare`? | — | **Resolved** 2026-10-02: use the alias `gpt-image-2.5-flare`. It picks up fixes automatically, and FR-9 lets us pin a snapshot later with one build |
 | OQ-9 | Real cost and latency per attempt (replaces NFR-8's unverified "< $0.05") | — | **Resolved** 2026-10-02: at `medium`, $0.0137 mean / $0.0139 max per attempt, latency p50 10.2 s / p90 11.9 s (M1, [findings](spikes/m1-findings.md)); replaces NFR-8's estimate |

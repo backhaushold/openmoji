@@ -16,6 +16,14 @@ extension OpenAIClientTests {
         return stub.makeClient(config: GenerationConfig(infoDictionary: info))
     }
 
+    /// An OpenAI error body: `{"error": {"message", "type", "code", "param"}}`.
+    private func errorBody(code: String?, message: String = "The model does not exist") -> Data {
+        let code = code.map { #""\#($0)""# } ?? "null"
+        return Data(
+            #"{"error":{"message":"\#(message)","type":"invalid_request_error","code":\#(code),"param":null}}"#.utf8
+        )
+    }
+
     /// The validation requests the stub saw.
     private func validationRequests() -> [URLRequest] {
         stub.recorded.map(\.request)
@@ -92,6 +100,43 @@ extension OpenAIClientTests {
         #expect(result == .modelNotVisible)
     }
 
+    /// OpenAI doesn't document the no-access status. Project-scoped keys
+    /// without model access are reported to get 403 with this code, so it
+    /// reads like 404 (OQ-6).
+    @Test func status403WithModelNotFoundIsValidWithAModelNotVisibleWarning() async {
+        stub.reset(.respond(status: 403, body: errorBody(code: "model_not_found")))
+        let result = await makeValidationClient().validate(key: candidateKey)
+        #expect(result == .modelNotVisible)
+    }
+
+    @Test func status403WithAnyOtherCodeIsStillNotPermitted() async {
+        let bodies = [
+            errorBody(code: "insufficient_permissions"),
+            errorBody(code: nil),
+            // The code field decides, not the words in the message.
+            errorBody(code: "unsupported_country_region_territory", message: "model_not_found"),
+            Data(#"{"code":"model_not_found"}"#.utf8),
+            Data("<html>Forbidden</html>".utf8),
+        ]
+        for (index, body) in bodies.enumerated() {
+            stub.reset(.respond(status: 403, body: body))
+            let result = await makeValidationClient().validate(key: candidateKey)
+            #expect(result == .notPermitted, "body #\(index)")
+        }
+    }
+
+    /// Only 403 and 404 mean "model not visible": the code on another status
+    /// changes nothing.
+    @Test func modelNotFoundCodeOnOtherStatusesChangesNothing() async {
+        let expected: [(status: Int, result: KeyValidationResult)] = [
+            (401, .invalid), (429, .couldNotCheck), (500, .couldNotCheck),
+        ]
+        for (status, result) in expected {
+            stub.reset(.respond(status: status, body: errorBody(code: "model_not_found")))
+            #expect(await makeValidationClient().validate(key: candidateKey) == result, "status \(status)")
+        }
+    }
+
     @Test func offlineCanNotBeChecked() async {
         for code in [URLError.Code.notConnectedToInternet, .networkConnectionLost, .dataNotAllowed] {
             stub.reset(.fail(code))
@@ -153,6 +198,7 @@ extension OpenAIClientTests {
             .respond(status: 200, body: echoing),
             .respond(status: 401, body: echoing),
             .respond(status: 403, body: echoing),
+            .respond(status: 403, body: errorBody(code: "model_not_found", message: "No access for \(candidateKey)")),
             .respond(status: 404, body: echoing),
             .respond(status: 500, body: echoing),
             .fail(.notConnectedToInternet),
