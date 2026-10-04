@@ -1,12 +1,12 @@
 # ADR-0017: Expanded-first layout, with the library grid as the landing screen
 
-- **Status:** Proposed (design approved by the user, 2026-10-04)
+- **Status:** Accepted (user, 2026-10-04)
 - **Date:** 2026-10-04
 
 ## Context
 [Tech spec](../tech-spec.md) §10 (2026-10-02) assumed the usual Messages flow: the extension opens compact, in the drawer under the thread, showing the library grid, and "New sticker" requests expanded for text entry. The M3 on-device probe (bead `openmoji-25h`, PR #54) ran on 2026-10-04 on the iPad Air with iPadOS 26: a Debug build of `main@ddc3bb4`, opened from the Messages + menu. Results are on beads `openmoji-zls`, `openmoji-jqa` and `openmoji-25h`.
 
-- **Compact is unreachable.** `requestPresentationStyle(.compact)` does nothing: the style stays expanded and no transition is logged. Swiping down on the extension, or tapping Messages' own text box, dismisses the app instead of collapsing it. The same holds in landscape: closing and reopening OpenMoji from the + menu still opens expanded only.
+- **Compact is unreachable.** `requestPresentationStyle(.compact)` does nothing: the style stays expanded and no transition is logged. Swiping down on the extension, or tapping Messages' own text box, dismisses the app instead of collapsing it. The same holds in landscape: closing and reopening OpenMoji from the + menu still opens expanded only. No external keyboard was attached, so the on-screen keyboard area was available.
 - **Expanded works.** Tap-to-insert and peel-and-drag from `MSStickerView` both work, and a SwiftUI `.contextMenu` on a cell coexists with peel: holding still shows the menu, an immediate drag peels (OQ-10). `activeConversation.insert` also works. A `TextField` takes keyboard input (A3). An `MSSticker` created from an App Group file URL renders, with no temp copy (OQ-11, A5).
 - Compact therefore couldn't be tested at all, so A4 is verified for expanded only.
 
