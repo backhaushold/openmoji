@@ -6,22 +6,24 @@ import SwiftUI
 /// (`CompactHomeView`). It reads the library when it appears; whatever changes
 /// the library later calls `AppModel.reloadLibrary()`.
 ///
-/// With no stickers it shows a bare placeholder, until the empty state
-/// replaces it.
+/// With no stickers it shows the empty state (FR-20), which points at the
+/// button the caller puts under the grid. It stays blank until the first read
+/// has finished, so it doesn't flash before the stickers arrive; it goes away
+/// by itself once a Keep reloads the library and `model.stickers` has an entry.
 struct StickerGridView: View {
     let model: AppModel
+    /// No key: the button under the grid is "Set up OpenMoji", not "New sticker".
+    let needsSetUp: Bool
+
+    /// Whether this grid's first read of the library has finished. Local, since
+    /// `AppModel` has no loaded flag: it can't tell "not read yet" from "empty".
+    @State private var loaded = false
 
     private let columns = [GridItem(.adaptive(minimum: 130, maximum: 200), spacing: 12)]
 
     var body: some View {
         Group {
-            if model.stickers.isEmpty {
-                Text("Your stickers will appear here.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            if !model.stickers.isEmpty {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(model.stickers) { sticker in
@@ -30,8 +32,15 @@ struct StickerGridView: View {
                         }
                     }
                 }
+            } else if loaded {
+                LibraryEmptyStateView(needsSetUp: needsSetUp, compact: model.presentationStyle == .compact)
+            } else {
+                Color.clear
             }
         }
-        .task { await model.reloadLibrary() }
+        .task {
+            await model.reloadLibrary()
+            loaded = true
+        }
     }
 }

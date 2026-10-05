@@ -13,7 +13,7 @@ struct CompactHomeView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            StickerGridView(model: model)
+            StickerGridView(model: model, needsSetUp: needsSetUp)
 
             if needsSetUp {
                 Button { model.startSetUp() } label: {
