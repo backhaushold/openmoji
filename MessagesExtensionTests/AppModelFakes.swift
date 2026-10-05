@@ -70,10 +70,11 @@ func makeProcessedSticker(prompt: String = defaultTestPrompt) -> ProcessedSticke
 /// one mid-flight, so tests control exactly when a read finishes. A read
 /// returns the list as it was when the read started. Keep can be failed or held
 /// the same way, and every call to it is counted, so a test can assert that
-/// nothing wrote (FR-24).
+/// nothing wrote (FR-24). Delete can be failed and is recorded.
 actor FakeLibrary: StickerLibrary {
     struct ReadFailure: Error {}
     struct KeepFailure: Error {}
+    struct DeleteFailure: Error {}
 
     private var stored: [Sticker]
     private var failing = false
@@ -88,6 +89,12 @@ actor FakeLibrary: StickerLibrary {
     private(set) var keepAttempts = 0
     /// What the successful `keep` calls were given, in order.
     private(set) var kept: [ProcessedSticker] = []
+
+    private var failingDeletes = false
+    /// Every `delete` call, including a failed one.
+    private(set) var deleteAttempts = 0
+    /// The ids the successful `delete` calls were given, in order.
+    private(set) var deleted: [UUID] = []
 
     init(stickers: [Sticker] = []) {
         stored = stickers
@@ -148,6 +155,19 @@ actor FakeLibrary: StickerLibrary {
             ),
             at: 0
         )
+    }
+
+    func failDeletes(_ failing: Bool) {
+        failingDeletes = failing
+    }
+
+    /// Like the real store: the sticker goes, the others stay in order, an
+    /// unknown id changes nothing, and a failure leaves the list as it was.
+    func delete(_ id: UUID) async throws {
+        deleteAttempts += 1
+        if failingDeletes { throw DeleteFailure() }
+        deleted.append(id)
+        stored.removeAll { $0.id == id }
     }
 
     func stickers() async throws -> [Sticker] {

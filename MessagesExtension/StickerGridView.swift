@@ -6,6 +6,8 @@ import SwiftUI
 /// (`CompactHomeView`). It reads the library when it appears; whatever changes
 /// the library later calls `AppModel.reloadLibrary()`.
 ///
+/// Touch-and-hold on a cell opens a context menu with Delete (FR-19).
+///
 /// With no stickers it shows the empty state (FR-20), which points at the
 /// button the caller puts under the grid. It stays blank until the first read
 /// has finished, so it doesn't flash before the stickers arrive; it goes away
@@ -29,6 +31,15 @@ struct StickerGridView: View {
                         ForEach(model.stickers) { sticker in
                             StickerCell(sticker: sticker, url: model.fileURL(for: sticker))
                                 .aspectRatio(1, contentMode: .fit)
+                                .contextMenu {
+                                    // No confirmation: the spec asks for none. Hold opens the
+                                    // menu and a drag still peels the sticker (OQ-10, ADR-0008).
+                                    Button(role: .destructive) {
+                                        Task { await model.delete(sticker) }
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                         }
                     }
                 }

@@ -12,10 +12,10 @@ import OSLog
 /// library (FR-11, ADR-0017), and Regenerate, which generates again from the
 /// prompt as edited (FR-12).
 ///
-/// Keep is the only library write: nothing is persisted before it, and a
-/// generation in flight is simply lost if Messages tears the extension down
-/// (FR-24). The API key is only ever checked for presence; it is never read
-/// into state, logged or put in an error (NFR-6).
+/// Keep and Delete are the only library writes: nothing is persisted before
+/// Keep, and a generation in flight is simply lost if Messages tears the
+/// extension down (FR-24). The API key is only ever checked for presence; it
+/// is never read into state, logged or put in an error (NFR-6).
 @MainActor
 @Observable
 final class AppModel {
@@ -269,6 +269,22 @@ final class AppModel {
         // no Preview to leave, and these do nothing.
         dismissPreview()
         closeCompose()
+    }
+
+    /// Delete (FR-19): removes `sticker` from the library and its PNG from disk,
+    /// then reloads the library so the grid drops it and leaves the others as
+    /// they were; deleting the last one leaves the grid on its empty state.
+    ///
+    /// If the delete fails it is logged and `stickers` is left as it was, so the
+    /// grid still shows what is on disk.
+    func delete(_ sticker: Sticker) async {
+        do {
+            try await library.delete(sticker.id)
+        } catch {
+            Self.log.error("Could not delete the sticker: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        await reloadLibrary()
     }
 
     /// Preview → idle, after Keep has written the sticker or the user walks

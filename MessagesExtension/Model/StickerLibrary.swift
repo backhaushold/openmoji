@@ -3,8 +3,8 @@ import Messages
 import OpenMojiCore
 
 /// What `AppModel` needs from the library: the stickers, newest first, where
-/// each one's PNG is, and Keep, the only write (tech spec §4, §10; FR-11,
-/// FR-24).
+/// each one's PNG is, and the two writes, Keep and Delete (tech spec §4, §10;
+/// FR-11, FR-19, FR-24).
 ///
 /// The model's own seam for fakes, like `StickerGenerating`. `LibraryStore`
 /// conforms to it and is wired in `MessagesViewController`.
@@ -14,12 +14,15 @@ protocol StickerLibrary: Sendable {
     /// Writes `processed` to the library, which then lists it first. Takes a
     /// `ProcessedSticker`, so a failed generation can't reach it.
     func keep(_ processed: ProcessedSticker) async throws
+    /// Removes the sticker with `id` from the library and deletes its PNG. An
+    /// unknown id is a no-op.
+    func delete(_ id: UUID) async throws
     /// The PNG for `sticker`.
     func fileURL(for sticker: Sticker) -> URL
 }
 
-/// `LibraryStore.stickers()` and `fileURL(for:)` already have the required
-/// signatures. Its own `keep(_:at:)` takes the date, which Keep sets to now.
+/// `LibraryStore.stickers()`, `delete(_:)` and `fileURL(for:)` already have the
+/// required signatures. Its own `keep(_:at:)` takes the date, which Keep sets to now.
 extension LibraryStore: StickerLibrary {
     func keep(_ processed: ProcessedSticker) async throws {
         try keep(processed, at: Date())
