@@ -7,11 +7,15 @@ import OSLog
 ///
 /// `needsKey → idle → generating → preview → idle`, with a failed generation
 /// landing in `failed(error, prompt)` and going back to `idle` with the prompt
-/// intact (FR-23). Cancel returns to `idle` with no error (FR-10).
+/// intact (FR-23). Cancel returns to `idle` with no error (FR-10). Preview
+/// offers Keep, which writes the sticker to the library and returns to the
+/// library (FR-11, ADR-0017), and Regenerate, which generates again from the
+/// prompt as edited (FR-12).
 ///
-/// Nothing is persisted here: a generation in flight is simply lost if Messages
-/// tears the extension down (FR-24). The API key is only ever checked for
-/// presence; it is never read into state, logged or put in an error (NFR-6).
+/// Keep is the only library write: nothing is persisted before it, and a
+/// generation in flight is simply lost if Messages tears the extension down
+/// (FR-24). The API key is only ever checked for presence; it is never read
+/// into state, logged or put in an error (NFR-6).
 @MainActor
 @Observable
 final class AppModel {
@@ -59,15 +63,31 @@ final class AppModel {
     var promptCount: Int { prompt.count }
 
     /// Whether Generate is enabled: a state that can start a generation (idle,
-    /// or Regenerate / Try again) and a prompt that isn't empty or only
-    /// whitespace.
+    /// or Regenerate / Try again), no Keep in flight, and a prompt that isn't
+    /// empty or only whitespace.
     var canGenerate: Bool {
         switch state {
         case .idle, .preview, .failed: break
         case .needsKey, .generating: return false
         }
+        if isKeeping { return false }
         return !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    /// The sticker in Preview, nil in every other state.
+    var previewSticker: ProcessedSticker? {
+        if case .preview(let sticker) = state { sticker } else { nil }
+    }
+
+    /// Whether Keep's write is in flight. Keep and Regenerate are both off
+    /// meanwhile, so a double tap writes once and the sticker on screen is the
+    /// one being kept.
+    private(set) var isKeeping = false
+
+    /// Whether the last Keep couldn't write the sticker. Preview stays up with
+    /// the sticker, so the user can Keep again. Cleared by the next Keep or
+    /// generation.
+    private(set) var keepFailed = false
 
     /// Asks the host for the expanded presentation style. Set by
     /// `MessagesViewController` (`requestPresentationStyle(.expanded)`); a
@@ -200,6 +220,7 @@ final class AppModel {
         guard canGenerate else { return }
         let text = prompt
         isComposing = true
+        keepFailed = false
 
         generationID += 1
         let id = generationID
@@ -224,8 +245,34 @@ final class AppModel {
         state = .idle
     }
 
+    /// Keep (FR-11): writes the previewed sticker to the library, reloads the
+    /// library so the grid has it at the front, and returns to the library
+    /// (idle, with Compose closed, ADR-0017). The prompt is left as it is.
+    ///
+    /// If the write fails nothing changes except `keepFailed`: Preview stays,
+    /// so the sticker isn't lost and Keep can be tried again. Does nothing
+    /// outside Preview or while a Keep is already running.
+    func keep() async {
+        guard case .preview(let sticker) = state, !isKeeping else { return }
+        isKeeping = true
+        keepFailed = false
+        defer { isKeeping = false }
+        do {
+            try await library.keep(sticker)
+        } catch {
+            Self.log.error("Could not keep the sticker: \(error.localizedDescription, privacy: .public)")
+            keepFailed = true
+            return
+        }
+        await reloadLibrary()
+        // The state may have moved on meanwhile (a key cleared); then there is
+        // no Preview to leave, and these do nothing.
+        dismissPreview()
+        closeCompose()
+    }
+
     /// Preview → idle, after Keep has written the sticker or the user walks
-    /// away from it.
+    /// away from it. Leaves Compose open, as the prompt is still there to edit.
     func dismissPreview() {
         guard case .preview = state else { return }
         state = .idle
