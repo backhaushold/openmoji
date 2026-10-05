@@ -13,7 +13,7 @@ struct LibraryView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            StickerGridView(model: model)
+            StickerGridView(model: model, needsSetUp: needsSetUp)
 
             Button {
                 if needsSetUp { onSetUp() } else { model.startNewSticker() }
