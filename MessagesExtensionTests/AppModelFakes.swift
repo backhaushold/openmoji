@@ -68,7 +68,8 @@ func makeProcessedSticker(prompt: String = defaultTestPrompt) -> ProcessedSticke
 
 /// A `StickerLibrary` over an in-memory list, which can fail its reads or hold
 /// one mid-flight, so tests control exactly when a read finishes. A read
-/// returns the list as it was when the read started. Keep can be failed or held
+/// returns the list as it was when the read started, and fails or not as
+/// `failReads` was when it started. Keep can be failed or held
 /// the same way, and every call to it is counted, so a test can assert that
 /// nothing wrote (FR-24). Delete can be failed and is recorded.
 actor FakeLibrary: StickerLibrary {
@@ -173,10 +174,12 @@ actor FakeLibrary: StickerLibrary {
     func stickers() async throws -> [Sticker] {
         readCount += 1
         let snapshot = stored
+        let fails = failing
         if held {
+            held = false
             await withCheckedContinuation { gate = $0 }
         }
-        if failing { throw ReadFailure() }
+        if fails { throw ReadFailure() }
         return snapshot
     }
 

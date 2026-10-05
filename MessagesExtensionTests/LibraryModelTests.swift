@@ -64,6 +64,104 @@ struct LibraryReloadTests {
         #expect(await library.readCount == 2)
     }
 
+    @Test func nothingIsLoadedUntilTheFirstReadFinishes() async {
+        let library = FakeLibrary()
+        let model = makeModel(library: library)
+        #expect(model.libraryLoad == .notLoaded)
+
+        await library.hold()
+        let read = Task { await model.reloadLibrary() }
+        while await library.readCount < 1 { await Task.yield() }
+        #expect(model.libraryLoad == .notLoaded)
+
+        await library.release()
+        await read.value
+        #expect(model.libraryLoad == .loaded)
+    }
+
+    @Test func aSuccessfulReadOfAnEmptyLibraryIsLoadedNotFailed() async {
+        let model = makeModel(library: FakeLibrary())
+        await model.reloadLibrary()
+        #expect(model.libraryLoad == .loaded)
+        #expect(model.stickers.isEmpty)
+    }
+
+    @Test func aFailedFirstReadIsFailedNotLoadedAndLeavesTheListEmpty() async {
+        let library = FakeLibrary(stickers: [makeSticker()])
+        await library.failReads(true)
+        let model = makeModel(library: library)
+        await model.reloadLibrary()
+        #expect(model.libraryLoad == .failed)
+        #expect(model.stickers.isEmpty)
+    }
+
+    @Test func aRetryAfterAFailedReadLoadsTheLibrary() async {
+        let sticker = makeSticker()
+        let library = FakeLibrary(stickers: [sticker])
+        await library.failReads(true)
+        let model = makeModel(library: library)
+        await model.reloadLibrary()
+        #expect(model.libraryLoad == .failed)
+
+        await library.failReads(false)
+        await model.reloadLibrary()
+        #expect(model.libraryLoad == .loaded)
+        #expect(model.stickers == [sticker])
+    }
+
+    @Test func aRetryIsNotLoadedUntilItFinishesAndFailsAgainWhenItFails() async {
+        let library = FakeLibrary()
+        await library.failReads(true)
+        let model = makeModel(library: library)
+        await model.reloadLibrary()
+        #expect(model.libraryLoad == .failed)
+
+        await library.hold()
+        let retry = Task { await model.reloadLibrary() }
+        while await library.readCount < 2 { await Task.yield() }
+        #expect(model.libraryLoad == .notLoaded)
+
+        await library.release()
+        await retry.value
+        #expect(model.libraryLoad == .failed)
+    }
+
+    @Test func aReadFailingAfterASuccessfulOneIsFailedAndKeepsTheStickers() async {
+        let sticker = makeSticker()
+        let library = FakeLibrary(stickers: [sticker])
+        let model = makeModel(library: library)
+        await model.reloadLibrary()
+        #expect(model.libraryLoad == .loaded)
+
+        await library.failReads(true)
+        await model.reloadLibrary()
+        #expect(model.libraryLoad == .failed)
+        #expect(model.stickers == [sticker])
+    }
+
+    @Test func aFailedReadFinishingLateDoesNotOverrideANewerSuccess() async {
+        let sticker = makeSticker()
+        let library = FakeLibrary(stickers: [sticker])
+        let model = makeModel(library: library)
+
+        // The first read starts, is held, and will fail once released.
+        await library.hold()
+        await library.failReads(true)
+        let slow = Task { await model.reloadLibrary() }
+        while await library.readCount < 1 { await Task.yield() }
+
+        // A second read succeeds meanwhile.
+        await library.failReads(false)
+        await model.reloadLibrary()
+        #expect(model.libraryLoad == .loaded)
+        #expect(model.stickers == [sticker])
+
+        await library.release()
+        await slow.value
+        #expect(model.libraryLoad == .loaded)
+        #expect(model.stickers == [sticker])
+    }
+
     @Test func anOlderReadFinishingLateDoesNotOverwriteANewerOne() async {
         let old = makeSticker(prompt: "old")
         let new = makeSticker(prompt: "new")

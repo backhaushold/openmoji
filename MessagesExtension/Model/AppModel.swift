@@ -41,6 +41,22 @@ final class AppModel {
     /// Empty until the first `reloadLibrary()`.
     private(set) var stickers: [Sticker] = []
 
+    /// How the latest library read went, so the grid can tell an empty library
+    /// from one it couldn't read (tech spec §10).
+    enum LibraryLoad: Equatable {
+        /// No read has finished yet: the grid shows nothing, so the empty state
+        /// doesn't flash before the stickers arrive.
+        case notLoaded
+        /// The latest read succeeded; `stickers` is what it returned, possibly
+        /// nothing (the empty state, FR-20).
+        case loaded
+        /// The latest read failed; `stickers` is whatever the last good read
+        /// left. The grid shows a retry in place of the empty state.
+        case failed
+    }
+
+    private(set) var libraryLoad = LibraryLoad.notLoaded
+
     /// The most characters a prompt may have (FR-6). Counted as `Character`s,
     /// i.e. extended grapheme clusters, so what the user sees as one character
     /// (an emoji with a skin tone or a ZWJ family, a letter with a combining
@@ -171,18 +187,26 @@ final class AppModel {
         }
     }
 
-    /// Re-reads the library into `stickers`. The grid calls it when it appears;
-    /// whatever changes the library (Keep, Delete) calls it afterwards so the
-    /// grid follows. A read that fails is logged and leaves the list as it was.
+    /// Re-reads the library into `stickers` and records the outcome in
+    /// `libraryLoad`. The grid calls it when it appears and from its "Try
+    /// again"; whatever changes the library (Keep, Delete) calls it afterwards
+    /// so the grid follows. A read that fails is logged, sets `.failed` and
+    /// leaves the list as it was, so stickers already shown stay shown. A retry
+    /// from `.failed` goes back through `.notLoaded`, so a second failure shows
+    /// (and announces) the error again.
     func reloadLibrary() async {
         libraryLoadID += 1
         let id = libraryLoadID
+        if libraryLoad == .failed { libraryLoad = .notLoaded }
         do {
             let loaded = try await library.stickers()
             guard id == libraryLoadID else { return }
             stickers = loaded
+            libraryLoad = .loaded
         } catch {
             Self.log.error("Could not read the library: \(error.localizedDescription, privacy: .public)")
+            guard id == libraryLoadID else { return }
+            libraryLoad = .failed
         }
     }
 

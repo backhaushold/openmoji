@@ -386,7 +386,7 @@ Pass bar: ≥ 17/20 on items 1–4. Record latency and `usage` for each run at `
 
 | Style | Content | FRs |
 |---|---|---|
-| **Expanded – Library** (landing) | Library grid (`LazyVGrid` of `StickerCell`, a `UIViewRepresentable` wrapping `MSStickerView`), newest first; "New sticker" button → Compose (with no key, "Set up OpenMoji" → Settings instead, §8); empty state | FR-17, 18, 20 |
+| **Expanded – Library** (landing) | Library grid (`LazyVGrid` of `StickerCell`, a `UIViewRepresentable` wrapping `MSStickerView`), newest first; "New sticker" button → Compose (with no key, "Set up OpenMoji" → Settings instead, §8); empty state after a successful read of an empty library; if the read fails and no stickers are showing, "Couldn't load your stickers" with Try again instead (`AppModel.libraryLoad`: not loaded / loaded / failed), and stickers already on screen stay if a later read fails | FR-17, 18, 20 |
 | **Expanded – Compose** | `TextField` (200-char limit with counter), Generate, gear → Settings | FR-6, 1 |
 | **Expanded – Generating** | Progress indicator, "Making your sticker…", Cancel | FR-10 |
 | **Expanded – Preview** | Large `MSStickerView` of the processed PNG (written to a temp file), Keep, Regenerate, Discard, editable prompt. Keep writes to `LibraryStore` and returns to the library (the new sticker first); if the write fails, Preview stays with a message and Keep can be tried again. Regenerate generates again from the prompt as edited and writes nothing. Discard drops the sticker, writes nothing and returns to Compose with the prompt as it reads now (`dismissPreview()`); it is disabled while a Keep is running | FR-11, 12 |
