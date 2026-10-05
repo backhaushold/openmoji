@@ -27,7 +27,7 @@ An iPad-only iMessage app extension that turns a text prompt into an emoji-style
 | `MessagesExtension/` | `OpenMojiMessages`, the iMessage extension: `MessagesViewController`, SwiftUI views, UI-free `Model/` |
 | `MessagesExtensionTests/` | `OpenMojiMessagesTests`, the simulator test bundle (Keychain round trip, view-model tests) |
 | `Packages/OpenMojiCore/` | Local Swift package with all logic and its tests (`swift test`) |
-| `scripts/` | Release lane: `release.sh`, `op-run.sh`, `asc.swift`, their self-tests, `testflight-expiry.sh` |
+| `scripts/` | Release lane: `release.sh`, `op-run.sh`, `asc.swift`, their self-tests, `testflight-expiry.sh`. Icons: `make-icons.swift` and its test `test-make-icons.sh` |
 | `release/` | `ExportOptions.plist` and `.env.example` (1Password `op://` references, no values) |
 | `Makefile` | Release lane entry points (`testflight`, `testflight-status`, `op-check`, `release-test`) |
 | `.github/workflows/` | `ci.yml` (verify) and `testflight-expiry.yml` (expiry alert) |
@@ -74,6 +74,20 @@ You can also open the generated `OpenMoji.xcodeproj` in Xcode and run the `OpenM
 `.github/workflows/ci.yml` runs on every pull request and every push to `main`, on `macos-latest`, and only verifies: gitleaks over the full history, SwiftFormat and SwiftLint (pull requests), `shellcheck`, `make release-test`, `swift test`, then `xcodegen generate` and the simulator tests. Changes that touch only docs (`docs/`, `*.md`, `.gitignore`, `.claude/`) run just gitleaks. CI never signs or uploads, and the repo has **no GitHub Actions secrets**: the workflows use only the built-in `GITHUB_TOKEN`.
 
 `.github/workflows/testflight-expiry.yml` runs daily and opens a GitHub issue when the newest TestFlight build (TestFlight builds last 90 days) is about two weeks from expiring. It works from the date of the `build-N` tag the release lane pushes, so it needs no App Store Connect access.
+
+## Icons
+
+The app icon and the iMessage icon set (1024x1024, and 1024x768 plus the smaller 4:3 sizes) come from one transparent sticker, rendered onto an opaque background at every slot named in the two `Contents.json` files. `scripts/make-icons.swift` does both steps (Foundation, CoreGraphics and ImageIO only; `make-placeholder-icons.swift` is the superseded first version).
+
+```bash
+# Spends money (a few cents per image at high quality, 3 images by default): candidates go to build/icons/
+set -a; . ./.env; set +a; op run --env-file spikes/m1/op.env -- swift scripts/make-icons.swift generate
+
+# Free: trim the chosen candidate and write every icon PNG in both asset catalogs, in place
+swift scripts/make-icons.swift render build/icons/<chosen>.png
+```
+
+`generate` takes `--n` (1 to 4) and `--quality` (`low`, `medium`, `high`). It refuses to run when `build/icons/requests.log` already has 5 requests unless you pass `--force`. `render` takes `--background RRGGBB` for a solid colour instead of the blue gradient. The prompt is a constant at the top of the script. Free checks: `swift scripts/make-icons.swift selftest` (renders into a temp copy of the icon sets) and `bash scripts/test-make-icons.sh` (`generate` against a local stub, no network).
 
 ## Release
 
