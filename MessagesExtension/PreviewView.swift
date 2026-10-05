@@ -4,10 +4,12 @@ import OSLog
 import SwiftUI
 
 /// The Preview state (tech spec §10; FR-11, FR-12): the processed sticker large
-/// as an `MSStickerView`, the prompt it was made from, editable, and two
+/// as an `MSStickerView`, the prompt it was made from, editable, and three
 /// actions. Keep saves it to the library and returns to the library
 /// (ADR-0017). Regenerate generates again from the prompt as it now reads, so
-/// the user can reword it first, and writes nothing to the library.
+/// the user can reword it first, and writes nothing to the library. Discard
+/// drops the sticker and returns to Compose with the prompt as it reads, also
+/// writing nothing; it waits while a Keep is running.
 ///
 /// The sticker is shown from a temp file written when the view appears and
 /// removed when it goes (`PreviewFile`): nothing is in the library until Keep
@@ -99,6 +101,14 @@ struct PreviewView: View {
             .buttonStyle(.bordered)
             .disabled(!model.canGenerate)
             .accessibilityHint("Makes a new sticker from the description above")
+
+            Button(role: .destructive) { model.dismissPreview() } label: {
+                Label("Discard", systemImage: "trash")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.isKeeping)
+            .accessibilityHint("Throws this sticker away and goes back to the description")
         }
         .controlSize(.large)
     }

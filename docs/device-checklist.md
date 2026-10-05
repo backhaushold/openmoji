@@ -47,7 +47,7 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
 
 - [ ] **AC-5** Regenerate produces a new image from the same prompt without losing the library.
   - Source: AC-5; FR-11, FR-12, FR-24
-  - How: count the stickers in the library. Generate a sticker, tap Regenerate without editing the prompt. A visibly new image replaces the preview and the prompt text is unchanged. Close the preview without Keep: the library count is unchanged and the library contents and order are unchanged.
+  - How: count the stickers in the library. Generate a sticker, tap Regenerate without editing the prompt. A visibly new image replaces the preview and the prompt text is unchanged. Then tap Discard on the preview: Compose comes back with the prompt as it was, and the library count, contents and order are unchanged.
   - Notes:
 
 - [ ] **AC-6** Each FR-22 failure (invalid key, budget exhausted, refusal, rate limit, timeout, offline) shows its own plain message.
@@ -103,7 +103,7 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
 
 - [ ] **NFR-9 (VoiceOver)** VoiceOver labels cover every control, and each sticker cell's label is its description.
   - Source: NFR-9 (§10, §13), FR-15, [ADR-0017](adr/0017-expanded-first-layout.md)
-  - How: turn on VoiceOver (Settings > Accessibility). Swipe through the expanded library, Compose, Generating, Preview, Error and the Settings sheet: every control (prompt field, Generate, gear, Cancel, Keep, Regenerate, Try again, Save, Clear) has a meaningful spoken label. Each sticker cell reads its prompt as its description (the first 150 characters of the prompt).
+  - How: turn on VoiceOver (Settings > Accessibility). Swipe through the expanded library, Compose, Generating, Preview, Error and the Settings sheet: every control (prompt field, Generate, gear, Cancel, Keep, Regenerate, Discard, Try again, Save, Clear) has a meaningful spoken label. Each sticker cell reads its prompt as its description (the first 150 characters of the prompt).
   - Expanded test [ ]
   - Compact test (N/A: unreachable on iPadOS 26 per [ADR-0017](adr/0017-expanded-first-layout.md))
   - Notes:
