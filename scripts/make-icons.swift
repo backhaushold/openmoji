@@ -16,7 +16,7 @@
 //   swift scripts/make-icons.swift render <candidate.png> [--background RRGGBB]
 //       FREE. Trims the transparent sticker to its alpha bounding box and composites it,
 //       opaque, over a background (a blue gradient, or the solid colour given) at every
-//       slot of both icon sets, overwriting the PNGs in place. The two Contents.json files
+//       slot of the icon sets, overwriting the PNGs in place. The Contents.json files
 //       are the source of truth for which files and sizes exist (point size x scale).
 //
 //   swift scripts/make-icons.swift selftest [--keep]
@@ -59,9 +59,12 @@ private enum Config {
         No text, no letters, no numbers, no watermark, nothing else in the picture.
         """
 
-    /// Both icon sets, relative to the repository root.
+    /// The icon sets, relative to the repository root. MessagesIcon is the extension's
+    /// compiled app-icon set that Messages' + menu resolves (openmoji-98g.3); the
+    /// stickersiconset still provides the loose PNGs and the App Store marketing image.
     static let iconSets = [
         "App/Assets.xcassets/AppIcon.appiconset",
+        "MessagesExtension/Assets.xcassets/MessagesIcon.appiconset",
         "MessagesExtension/Assets.xcassets/iMessage App Icon.stickersiconset"
     ]
     /// The sticker is fitted inside a square of this fraction of the slot's shorter edge.
@@ -261,7 +264,7 @@ private func numbers(_ text: String) -> [Double] {
     text.split(separator: "x").compactMap { Double($0) }
 }
 
-/// Every slot that names a file, in both icon sets under `root`.
+/// Every slot that names a file, in the icon sets under `root`.
 private func outputs(under root: URL) -> [Output] {
     var result: [Output] = []
     for relativePath in Config.iconSets {
@@ -312,7 +315,7 @@ private func composite(sticker: CGImage, background: Background, width: Int, hei
     return image
 }
 
-/// Renders `candidate` into every slot of both icon sets under `root`.
+/// Renders `candidate` into every slot of the icon sets under `root`.
 @discardableResult
 private func render(candidate: URL, background: Background, root: URL) -> [Output] {
     guard let loaded = loadImage(candidate) else { fail("cannot read an image at \(candidate.path)") }
@@ -551,7 +554,7 @@ private func selftestCommand(_ arguments: [String]) {
         if parsed.flags.contains("--keep") { say("kept \(temp.path)") } else { try? fileManager.removeItem(at: temp) }
     }
 
-    // A scratch copy of both icon sets: the repository's PNGs are never touched.
+    // A scratch copy of the icon sets: the repository's PNGs are never touched.
     for relativePath in Config.iconSets {
         let destination = temp.appending(path: relativePath, directoryHint: .isDirectory)
         do {
@@ -576,7 +579,7 @@ private func selftestCommand(_ arguments: [String]) {
 
     let solid = Background.solid([0x33, 0x66, 0x99])
     let slots = render(candidate: candidate, background: solid, root: temp)
-    checks.expect(slots.count >= 13, "only \(slots.count) slots found in the two icon sets (expected the 1 app icon and 12 iMessage icons)")
+    checks.expect(slots.count >= 14, "only \(slots.count) slots found in the icon sets (expected 2 app icons and 12 iMessage icons)")
     verify(slots, background: solid, into: &checks)
 
     let first = slots.compactMap { try? Data(contentsOf: $0.url) }
@@ -601,7 +604,7 @@ private let helpText = """
       generate [--n 1-4] [--quality low|medium|high] [--out DIR] [--force]
                  PAID: candidate sticker icons into build/icons (needs OPENAI_API_KEY via op run)
       render <candidate.png> [--background RRGGBB]
-                 free: composite the sticker onto every slot of both icon sets, in place
+                 free: composite the sticker onto every slot of the icon sets, in place
       selftest [--keep]
                  free: render a synthetic sticker into a temp copy of the icon sets and check it
     """
