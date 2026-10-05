@@ -7,8 +7,20 @@ import SwiftUI
 final class MessagesViewController: MSMessagesAppViewController {
     private let model = AppModel(
         credentials: KeychainCredentialStore(),
-        generator: GenerationService(credentials: KeychainCredentialStore(), client: OpenAIClient())
+        generator: GenerationService(credentials: KeychainCredentialStore(), client: OpenAIClient()),
+        library: MessagesViewController.makeLibrary()
     )
+
+    /// The library lives in the App Group container (ADR-0005, ADR-0006). A
+    /// missing group entitlement is a build defect, so fail loudly here rather
+    /// than keep stickers somewhere else, as `LibraryStore.init` intends.
+    private static func makeLibrary() -> LibraryStore {
+        do {
+            return try LibraryStore()
+        } catch {
+            fatalError("The App Group container is unavailable: \(error)")
+        }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
