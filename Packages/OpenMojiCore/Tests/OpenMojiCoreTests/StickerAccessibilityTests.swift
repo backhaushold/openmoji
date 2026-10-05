@@ -65,4 +65,15 @@ import Testing
 
         #expect(accessibilityText.unicodeScalars.count <= 150)
     }
+
+    // MARK: Processed sticker (Preview)
+
+    @Test func aProcessedStickerGetsTheSameDescriptionAsTheKeptSticker() {
+        let prompt = String(repeating: "a", count: 160)
+        let processed = ProcessedSticker(prompt: prompt, modelID: "test", quality: "medium", png: Data([0x89]), edge: 300)
+        let kept = Sticker(id: UUID(), prompt: prompt, createdAt: Date(), modelID: "test", quality: "medium", pixelSize: 300, byteCount: 1)
+
+        #expect(processed.accessibilityText.unicodeScalars.count == 150)
+        #expect(processed.accessibilityText == kept.accessibilityText)
+    }
 }

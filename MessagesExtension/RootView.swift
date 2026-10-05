@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Switches on `AppModel.route`. Idle is real (the library when expanded, then
-/// Compose after "New sticker"; "New sticker" alone when compact), and so are
-/// Generating and Error; Preview is a placeholder for a separate bead.
-/// Settings is a sheet, opened by the library's "Set up OpenMoji" when there is
-/// no key (FR-5), Compose's gear and the error's Settings button.
+/// Switches on `AppModel.route`: idle is the library when expanded, then
+/// Compose after "New sticker" ("New sticker" alone when compact), then
+/// Generating, Preview or Error. Settings is a sheet, opened by the library's
+/// "Set up OpenMoji" when there is no key (FR-5), Compose's gear and the
+/// error's Settings button.
 struct RootView: View {
     let model: AppModel
     let settings: SettingsModel
@@ -35,7 +35,7 @@ struct RootView: View {
         case .generating:
             GeneratingView(model: model)
         case .preview:
-            Text("Preview")
+            if let sticker = model.previewSticker { PreviewView(model: model, sticker: sticker) }
         case .failed(let error):
             ErrorView(model: model, error: error) { showingSettings = true }
         }

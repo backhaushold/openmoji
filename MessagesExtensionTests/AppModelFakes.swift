@@ -68,15 +68,26 @@ func makeProcessedSticker(prompt: String = defaultTestPrompt) -> ProcessedSticke
 
 /// A `StickerLibrary` over an in-memory list, which can fail its reads or hold
 /// one mid-flight, so tests control exactly when a read finishes. A read
-/// returns the list as it was when the read started.
+/// returns the list as it was when the read started. Keep can be failed or held
+/// the same way, and every call to it is counted, so a test can assert that
+/// nothing wrote (FR-24).
 actor FakeLibrary: StickerLibrary {
     struct ReadFailure: Error {}
+    struct KeepFailure: Error {}
 
     private var stored: [Sticker]
     private var failing = false
     private var held = false
     private var gate: CheckedContinuation<Void, Never>?
     private(set) var readCount = 0
+
+    private var failingKeeps = false
+    private var keepHeld = false
+    private var keepGate: CheckedContinuation<Void, Never>?
+    /// Every `keep` call, including a failed one.
+    private(set) var keepAttempts = 0
+    /// What the successful `keep` calls were given, in order.
+    private(set) var kept: [ProcessedSticker] = []
 
     init(stickers: [Sticker] = []) {
         stored = stickers
@@ -99,6 +110,44 @@ actor FakeLibrary: StickerLibrary {
         held = false
         gate?.resume()
         gate = nil
+    }
+
+    func failKeeps(_ failing: Bool) {
+        failingKeeps = failing
+    }
+
+    /// The next `keep(_:)` suspends until `releaseKeeps()`.
+    func holdKeeps() {
+        keepHeld = true
+    }
+
+    func releaseKeeps() {
+        keepHeld = false
+        keepGate?.resume()
+        keepGate = nil
+    }
+
+    /// Like the real store: the new sticker goes first, and a failure leaves
+    /// the list as it was.
+    func keep(_ processed: ProcessedSticker) async throws {
+        keepAttempts += 1
+        if keepHeld {
+            await withCheckedContinuation { keepGate = $0 }
+        }
+        if failingKeeps { throw KeepFailure() }
+        kept.append(processed)
+        stored.insert(
+            Sticker(
+                id: UUID(),
+                prompt: processed.prompt,
+                createdAt: Date(),
+                modelID: processed.modelID,
+                quality: processed.quality,
+                pixelSize: processed.edge,
+                byteCount: processed.png.count
+            ),
+            at: 0
+        )
     }
 
     func stickers() async throws -> [Sticker] {

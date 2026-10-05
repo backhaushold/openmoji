@@ -124,6 +124,38 @@ struct LibraryStoreWiringTests {
         #expect(model.fileURL(for: second) == store.fileURL(for: second))
         #expect(FileManager.default.fileExists(atPath: model.fileURL(for: second).path))
     }
+
+    @Test func keepingThroughTheModelWritesTheStoreAndShowsTheStickerFirst() async throws {
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LibraryStore(root: directory)
+        let generator = FakeGenerator()
+        let model = AppModel(
+            credentials: InMemoryCredentialStore(key: "test-fake-key-0000"),
+            generator: generator,
+            library: store
+        )
+        model.presentationStyle = .expanded
+
+        for prompt in ["first", "second"] {
+            model.prompt = prompt
+            await generator.enqueue(.success(makeProcessedSticker(prompt: prompt)), for: prompt)
+            model.startNewSticker()
+            model.generate()
+            if case .generating(let task) = model.state { await task.value }
+            #expect(model.route == .preview)
+
+            await model.keep()
+            #expect(model.route == .library)
+        }
+
+        #expect(model.stickers.map(\.prompt) == ["second", "first"])
+        #expect(try await store.stickers() == model.stickers)
+        for sticker in model.stickers {
+            let png = try Data(contentsOf: model.fileURL(for: sticker))
+            #expect(png == makeProcessedSticker().png)
+        }
+    }
 }
 
 /// `MSSticker.libraryEntry`: the sticker behind each cell. VoiceOver reads its

@@ -13,15 +13,20 @@ private struct Rig {
     let model: AppModel
     let credentials: InMemoryCredentialStore
     let generator: FakeGenerator
+    let library: FakeLibrary
 }
 
 @MainActor
-private func makeRig(key: String? = fakeKey, prompt: String = defaultTestPrompt) -> Rig {
+private func makeRig(
+    key: String? = fakeKey,
+    prompt: String = defaultTestPrompt,
+    library: FakeLibrary = FakeLibrary()
+) -> Rig {
     let credentials = InMemoryCredentialStore(key: key)
     let generator = FakeGenerator()
-    let model = AppModel(credentials: credentials, generator: generator, library: FakeLibrary())
+    let model = AppModel(credentials: credentials, generator: generator, library: library)
     model.prompt = prompt
-    return Rig(model: model, credentials: credentials, generator: generator)
+    return Rig(model: model, credentials: credentials, generator: generator, library: library)
 }
 
 @MainActor
@@ -627,6 +632,7 @@ struct AppModelPreviewTests {
 
         #expect(rig.model.state == .preview(makeProcessedSticker(prompt: "a cat in a hat")))
         #expect(await rig.generator.prompts == [defaultTestPrompt, "a cat in a hat"])
+        #expect(await rig.library.keepAttempts == 0)
     }
 
     @Test func aFailedRegenerateKeepsTheEditedPrompt() async {
@@ -642,6 +648,7 @@ struct AppModelPreviewTests {
 
         #expect(rig.model.state == .failed(.serviceUnavailable, prompt: "a cat in a hat"))
         #expect(rig.model.prompt == "a cat in a hat")
+        #expect(await rig.library.keepAttempts == 0)
     }
 
     @Test func dismissPreviewAndDismissErrorIgnoreOtherStates() {
@@ -661,6 +668,260 @@ struct AppModelPreviewTests {
         #expect(model.presentationStyle == .compact)
         model.presentationStyle = .expanded
         #expect(model.presentationStyle == .expanded)
+    }
+}
+
+/// A rig sitting in Preview for `prompt`, after "New sticker" and Generate:
+/// where Keep and Regenerate start.
+@MainActor
+private func previewRig(
+    prompt: String = defaultTestPrompt,
+    library: FakeLibrary = FakeLibrary(),
+    style: MSMessagesAppPresentationStyle = .expanded
+) async -> Rig {
+    let rig = makeRig(prompt: prompt, library: library)
+    rig.model.presentationStyle = style
+    rig.model.startNewSticker()
+    await rig.generator.enqueue(.success(makeProcessedSticker(prompt: prompt)), for: prompt)
+    rig.model.generate()
+    await settle(rig.model)
+    return rig
+}
+
+/// Keep (FR-11): the sticker goes into the library at the front and the user
+/// lands on the library (ADR-0017). Keep is the only write (FR-24).
+@MainActor
+struct AppModelKeepTests {
+    @Test func keepAddsTheStickerToTheTopOfTheLibraryAndReturnsToIt() async {
+        let older = makeSticker(prompt: "older")
+        let rig = await previewRig(prompt: "a brave fox", library: FakeLibrary(stickers: [older]))
+        await rig.model.reloadLibrary()
+        #expect(rig.model.stickers == [older])
+        #expect(rig.model.route == .preview)
+
+        await rig.model.keep()
+
+        #expect(await rig.library.kept == [makeProcessedSticker(prompt: "a brave fox")])
+        #expect(rig.model.stickers.map(\.prompt) == ["a brave fox", "older"])
+        #expect(rig.model.state == .idle)
+        #expect(rig.model.route == .library)
+        #expect(rig.model.isKeeping == false)
+        #expect(rig.model.keepFailed == false)
+    }
+
+    @Test func keepLeavesThePromptForTheNextSticker() async {
+        let rig = await previewRig(prompt: "a brave fox")
+        await rig.model.keep()
+        #expect(rig.model.prompt == "a brave fox")
+
+        rig.model.startNewSticker()
+        #expect(rig.model.route == .compose)
+    }
+
+    @Test func keepInCompactReturnsToTheCompactHome() async {
+        let rig = await previewRig(style: .compact)
+        await rig.model.keep()
+        #expect(rig.model.state == .idle)
+        #expect(rig.model.route == .compactHome)
+        #expect(rig.model.stickers.count == 1)
+    }
+
+    @Test func keepWritesTheStickerOnScreenAfterARegenerate() async {
+        let rig = await previewRig()
+        rig.model.prompt = "a cat in a hat"
+        await rig.generator.enqueue(.success(makeProcessedSticker(prompt: "a cat in a hat")), for: "a cat in a hat")
+        rig.model.generate()
+        await settle(rig.model)
+
+        await rig.model.keep()
+
+        #expect(await rig.library.kept == [makeProcessedSticker(prompt: "a cat in a hat")])
+        #expect(rig.model.stickers.map(\.prompt) == ["a cat in a hat"])
+    }
+
+    @Test func keepOutsidePreviewDoesNothing() async throws {
+        let idle = makeRig()
+        await idle.model.keep()
+        #expect(idle.model.state == .idle)
+
+        let needsKey = makeRig(key: nil)
+        await needsKey.model.keep()
+        #expect(needsKey.model.state == .needsKey)
+
+        let generating = makeRig()
+        await generating.generator.hold()
+        await generating.generator.enqueue(.success(makeProcessedSticker()))
+        generating.model.generate()
+        let task = try #require(inFlightTask(of: generating.model))
+        await generating.model.keep()
+        #expect(inFlightTask(of: generating.model) != nil)
+        await generating.generator.release()
+        await task.value
+
+        let failed = makeRig()
+        await failed.generator.enqueue(.failure(.offline))
+        failed.model.generate()
+        await settle(failed.model)
+        await failed.model.keep()
+        #expect(failed.model.state == .failed(.offline, prompt: defaultTestPrompt))
+
+        for rig in [idle, needsKey, generating, failed] {
+            #expect(await rig.library.keepAttempts == 0)
+        }
+    }
+
+    @Test func aFailedKeepKeepsThePreviewAndTheLibraryAndCanBeRetried() async {
+        let rig = await previewRig()
+        await rig.library.failKeeps(true)
+
+        await rig.model.keep()
+        #expect(rig.model.keepFailed)
+        #expect(rig.model.isKeeping == false)
+        #expect(rig.model.route == .preview)
+        #expect(rig.model.previewSticker == makeProcessedSticker())
+        #expect(rig.model.stickers.isEmpty)
+        #expect(await rig.library.kept.isEmpty)
+
+        await rig.library.failKeeps(false)
+        await rig.model.keep()
+        #expect(rig.model.keepFailed == false)
+        #expect(rig.model.route == .library)
+        #expect(rig.model.stickers.count == 1)
+        #expect(await rig.library.kept.count == 1)
+    }
+
+    @Test func regeneratingAfterAFailedKeepClearsTheFailure() async {
+        let rig = await previewRig()
+        await rig.library.failKeeps(true)
+        await rig.model.keep()
+        #expect(rig.model.keepFailed)
+
+        await rig.generator.enqueue(.success(makeProcessedSticker()))
+        rig.model.generate()
+        #expect(rig.model.keepFailed == false)
+        await settle(rig.model)
+        #expect(rig.model.route == .preview)
+    }
+
+    @Test func aSecondKeepWhileOneIsRunningWritesOnceAndRegenerateWaits() async {
+        let rig = await previewRig()
+        await rig.library.holdKeeps()
+
+        let first = Task { await rig.model.keep() }
+        while await rig.library.keepAttempts < 1 { await Task.yield() }
+        #expect(rig.model.isKeeping)
+        #expect(rig.model.canGenerate == false)
+
+        await rig.model.keep()
+        rig.model.generate()
+        #expect(await rig.library.keepAttempts == 1)
+        #expect(await rig.generator.prompts == [defaultTestPrompt])
+        #expect(rig.model.route == .preview)
+
+        await rig.library.releaseKeeps()
+        await first.value
+        #expect(await rig.library.kept.count == 1)
+        #expect(rig.model.stickers.count == 1)
+        #expect(rig.model.route == .library)
+        #expect(rig.model.isKeeping == false)
+        #expect(rig.model.canGenerate)
+    }
+
+    @Test func aKeyClearedDuringKeepStillLeavesTheStickerKeptAndTheRouteAtSetUp() async throws {
+        let rig = await previewRig()
+        await rig.library.holdKeeps()
+
+        let keeping = Task { await rig.model.keep() }
+        while await rig.library.keepAttempts < 1 { await Task.yield() }
+        try rig.credentials.clear()
+        rig.model.refreshKey()
+        #expect(rig.model.route == .librarySetUp)
+
+        await rig.library.releaseKeeps()
+        await keeping.value
+        #expect(await rig.library.kept.count == 1)
+        #expect(rig.model.stickers.count == 1)
+        #expect(rig.model.state == .needsKey)
+        #expect(rig.model.route == .librarySetUp)
+    }
+}
+
+/// Regenerate (FR-12): generate again from the prompt as it now reads, with
+/// nothing written to the library until Keep.
+@MainActor
+struct AppModelRegenerateTests {
+    @Test func regenerateWithTheSamePromptSendsItAgain() async {
+        let rig = await previewRig(prompt: "a brave fox")
+        await rig.generator.enqueue(.success(makeProcessedSticker(prompt: "a brave fox")), for: "a brave fox")
+
+        #expect(rig.model.canGenerate)
+        rig.model.generate()
+        #expect(rig.model.route == .generating)
+        await settle(rig.model)
+
+        #expect(rig.model.route == .preview)
+        #expect(rig.model.prompt == "a brave fox")
+        #expect(await rig.generator.prompts == ["a brave fox", "a brave fox"])
+    }
+
+    @Test func regenerateUsesTheEditedPromptAndWritesNothingToTheLibrary() async {
+        let older = makeSticker(prompt: "older")
+        let rig = await previewRig(prompt: "a brave fox", library: FakeLibrary(stickers: [older]))
+        await rig.model.reloadLibrary()
+
+        rig.model.prompt = "a brave fox in a boat"
+        await rig.generator.enqueue(
+            .success(makeProcessedSticker(prompt: "a brave fox in a boat")),
+            for: "a brave fox in a boat"
+        )
+        rig.model.generate()
+        await settle(rig.model)
+
+        #expect(await rig.generator.prompts == ["a brave fox", "a brave fox in a boat"])
+        #expect(rig.model.previewSticker == makeProcessedSticker(prompt: "a brave fox in a boat"))
+        #expect(await rig.library.keepAttempts == 0)
+        #expect(await rig.library.kept.isEmpty)
+        #expect(rig.model.stickers == [older])
+    }
+
+    @Test func onlyTheStickerFinallyKeptIsWritten() async {
+        let rig = await previewRig(prompt: "one")
+        for next in ["two", "three"] {
+            rig.model.prompt = next
+            await rig.generator.enqueue(.success(makeProcessedSticker(prompt: next)), for: next)
+            rig.model.generate()
+            await settle(rig.model)
+        }
+        #expect(await rig.library.keepAttempts == 0)
+
+        await rig.model.keep()
+        #expect(await rig.library.kept == [makeProcessedSticker(prompt: "three")])
+        #expect(rig.model.stickers.map(\.prompt) == ["three"])
+    }
+
+    @Test(arguments: ["", "   ", "\n\t "])
+    func regenerateWithABlankPromptDoesNothing(blank: String) async {
+        let rig = await previewRig()
+        rig.model.prompt = blank
+
+        #expect(rig.model.canGenerate == false)
+        rig.model.generate()
+        #expect(rig.model.route == .preview)
+        #expect(await rig.generator.prompts == [defaultTestPrompt])
+    }
+
+    @Test func thePreviewStickerIsOnlyAvailableInPreview() async {
+        let rig = makeRig()
+        #expect(rig.model.previewSticker == nil)
+
+        await rig.generator.enqueue(.success(makeProcessedSticker()))
+        rig.model.generate()
+        #expect(rig.model.previewSticker == nil)
+        await settle(rig.model)
+        #expect(rig.model.previewSticker == makeProcessedSticker())
+
+        rig.model.dismissPreview()
+        #expect(rig.model.previewSticker == nil)
     }
 }
 
@@ -727,10 +988,9 @@ private let failingKinds = ErrorKind.allCases.filter { $0 != .cancelled }
 
 /// The Error state (FR-22 to FR-24; tech spec §6, §10).
 ///
-/// "The library is never touched" (FR-24) holds by construction, not by a fake:
-/// `AppModel` takes only a credential store and a generator, so no
-/// `LibraryStore` write is reachable from the failure path. Keep, the only
-/// write, takes a `ProcessedSticker`, which a failed generation never produces.
+/// "The library is never touched" (FR-24): Keep, the only write, takes a
+/// `ProcessedSticker`, which a failed generation never produces, and
+/// `FakeLibrary` counts the calls to confirm none is made.
 @MainActor
 struct AppModelErrorStateTests {
     private static let prompt = "a sleepy owl"
@@ -770,6 +1030,7 @@ struct AppModelErrorStateTests {
         }
         #expect(rig.model.prompt == Self.prompt)
         #expect(await rig.generator.prompts == [Self.prompt])
+        #expect(await rig.library.keepAttempts == 0)
     }
 
     @Test(arguments: failingKinds)
