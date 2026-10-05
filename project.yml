@@ -93,6 +93,29 @@ targets:
         # extension only in the restricted media context (tech spec section 3).
         MSSupportedPresentationContexts:
           - MSMessagesAppPresentationContextMessages
+        # openmoji-98g.3: on a real iPad, Messages' + menu showed the grid
+        # placeholder instead of the icon that the loose "iMessage App Icon*.png"
+        # files (CFBundleIconFiles) provide. With CFBundleIconName naming a
+        # compiled app-icon set, IconServices resolves the icon from Assets.car
+        # first, the way the host app's AppIcon resolves, before it tries the
+        # loose files. Xcode merges this with actool's CFBundleIconFiles.
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleIconName: MessagesIcon
+        # On an iPad, CFBundleIcons~ipad replaces CFBundleIcons entirely, and
+        # actool emits a CFBundleIcons~ipad holding only CFBundleAlternateIcons
+        # for the extra app-icon set, which would hide the primary icon. So the
+        # primary icon is declared here too. The file names are the ones actool
+        # derives from the stickersiconset slots (point size baked into the name).
+        CFBundleIcons~ipad:
+          CFBundlePrimaryIcon:
+            CFBundleIconName: MessagesIcon
+            CFBundleIconFiles:
+              - iMessage App Icon60x45
+              - iMessage App Icon67x50
+              - iMessage App Icon74x55
+              - iMessage App Icon27x20
+              - iMessage App Icon32x24
         OpenMojiImageModel: $(OPENMOJI_IMAGE_MODEL)
         OpenMojiImageQuality: $(OPENMOJI_IMAGE_QUALITY)
     settings:
@@ -101,6 +124,10 @@ targets:
         TARGETED_DEVICE_FAMILY: "2"
         # The iMessage icon set (.stickersiconset) lives in Assets.xcassets.
         ASSETCATALOG_COMPILER_APPICON_NAME: iMessage App Icon
+        # Also compile MessagesIcon.appiconset into Assets.car (openmoji-98g.3;
+        # see CFBundleIconName above). Without this, actool skips every
+        # appiconset other than the one named in APPICON_NAME.
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
       configs:
         Release:
           CODE_SIGN_STYLE: Manual
