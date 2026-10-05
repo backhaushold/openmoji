@@ -9,19 +9,21 @@ import SwiftUI
 /// Touch-and-hold on a cell opens a context menu with Delete (FR-19).
 ///
 /// With no stickers it shows the empty state (FR-20), which points at the
-/// button the caller puts under the grid. It stays blank until the first read
-/// has finished, so it doesn't flash before the stickers arrive; it goes away
-/// by itself once a Keep reloads the library and `model.stickers` has an entry.
+/// button the caller puts under the grid, once a read has succeeded; if the
+/// read failed it shows a short error with Try again instead, so an unreadable
+/// library isn't taken for an empty one. It stays blank until the first read
+/// has finished (`AppModel.libraryLoad`), so it doesn't flash before the
+/// stickers arrive; it goes away by itself once a Keep reloads the library and
+/// `model.stickers` has an entry. Stickers already shown stay shown if a later
+/// read fails.
 struct StickerGridView: View {
     let model: AppModel
     /// No key: the button under the grid is "Set up OpenMoji", not "New sticker".
     let needsSetUp: Bool
 
-    /// Whether this grid's first read of the library has finished. Local, since
-    /// `AppModel` has no loaded flag: it can't tell "not read yet" from "empty".
-    @State private var loaded = false
-
     private let columns = [GridItem(.adaptive(minimum: 130, maximum: 200), spacing: 12)]
+
+    private var compact: Bool { model.presentationStyle == .compact }
 
     var body: some View {
         Group {
@@ -43,15 +45,21 @@ struct StickerGridView: View {
                         }
                     }
                 }
-            } else if loaded {
-                LibraryEmptyStateView(needsSetUp: needsSetUp, compact: model.presentationStyle == .compact)
             } else {
-                Color.clear
+                switch model.libraryLoad {
+                case .notLoaded:
+                    Color.clear
+                case .loaded:
+                    LibraryEmptyStateView(needsSetUp: needsSetUp, compact: compact)
+                case .failed:
+                    LibraryLoadFailedView(compact: compact) {
+                        Task { await model.reloadLibrary() }
+                    }
+                }
             }
         }
         .task {
             await model.reloadLibrary()
-            loaded = true
         }
     }
 }
