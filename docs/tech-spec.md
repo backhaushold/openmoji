@@ -87,7 +87,7 @@ flowchart LR
     ASC -. installs .-> Shell
 ```
 
-**Flow.** `AppModel` drives a small state machine: `needsKey → idle → generating(task) → preview(result) → idle`, with `failed(error, prompt)` returning to `idle` with the prompt intact (PRD core flow). `GenerationService.generate(prompt:)` is one `async throws` call: template → request → decode → process → `ProcessedSticker`. Keep writes to `LibraryStore`; Regenerate repeats `generate` with the same (or edited) prompt.
+**Flow.** `AppModel` drives a small state machine: `needsKey → idle → generating(task) → preview(result) → idle`, with `failed(error, prompt)` returning to `idle` with the prompt intact (PRD core flow). `GenerationService.generate(prompt:)` is one `async throws` call: template → request → decode → process → `ProcessedSticker`. Keep writes to `LibraryStore`; Regenerate repeats `generate` with the same (or edited) prompt; Discard returns to `idle` with nothing written.
 
 **Concurrency.** Swift 6 language mode, strict concurrency complete. `AppModel` is `@MainActor`; `OpenAIClient`, `LibraryStore` and `CredentialStore` are actors or `Sendable` structs; `StickerProcessor` is a pure `Sendable` function run off the main actor. Cancel (FR-10) cancels the generation `Task`, which cancels the `URLSession` data task.
 
@@ -389,7 +389,7 @@ Pass bar: ≥ 17/20 on items 1–4. Record latency and `usage` for each run at `
 | **Expanded – Library** (landing) | Library grid (`LazyVGrid` of `StickerCell`, a `UIViewRepresentable` wrapping `MSStickerView`), newest first; "New sticker" button → Compose (with no key, "Set up OpenMoji" → Settings instead, §8); empty state | FR-17, 18, 20 |
 | **Expanded – Compose** | `TextField` (200-char limit with counter), Generate, gear → Settings | FR-6, 1 |
 | **Expanded – Generating** | Progress indicator, "Making your sticker…", Cancel | FR-10 |
-| **Expanded – Preview** | Large `MSStickerView` of the processed PNG (written to a temp file), Keep, Regenerate, editable prompt. Keep writes to `LibraryStore` and returns to the library (the new sticker first); if the write fails, Preview stays with a message and Keep can be tried again. Regenerate generates again from the prompt as edited and writes nothing | FR-11, 12 |
+| **Expanded – Preview** | Large `MSStickerView` of the processed PNG (written to a temp file), Keep, Regenerate, Discard, editable prompt. Keep writes to `LibraryStore` and returns to the library (the new sticker first); if the write fails, Preview stays with a message and Keep can be tried again. Regenerate generates again from the prompt as edited and writes nothing. Discard drops the sticker, writes nothing and returns to Compose with the prompt as it reads now (`dismissPreview()`); it is disabled while a Keep is running | FR-11, 12 |
 | **Expanded – Error** | Message from §6, prompt intact, Try again | FR-22, 23 |
 | **Settings sheet** | §8 | FR-1–5 |
 | **Library editing** | Context menu on a cell: Delete (FR-19); "Reuse prompt" (FR-21, *Could*) | FR-19, 21 |
@@ -408,7 +408,7 @@ Text entry only happens in expanded. Apple recommends against text fields in com
 | Layer | Runs where | What |
 |---|---|---|
 | `OpenMojiCoreTests` (`swift test`) | Mac host: CI and the release lane | `StickerProcessor`: fixtures for a 1024² transparent PNG (→ 618 px, < 500 KB, alpha kept), a high-entropy RGBA noise PNG (forces step-down; asserts the edge is in the ladder and ≥ 300), a non-square source (padded square), an opaque source (kept, warning logged), corrupt data (throws). `ErrorMapper`: one canned body per §6 row, including both 429 families and `moderation_blocked`. `OpenAIClient`: a `URLProtocol` stub asserts the method, URL, JSON body fields from §5.1, the `Authorization` header and the 90 s timeouts, and maps the stubbed responses. `LibraryStore`: temp-dir tests for Keep/Delete ordering, newest-first order, a corrupt index (preserved, not deleted), and survival across re-instantiation. `StyleTemplate`: substitution and trimming. Secret hygiene: no `sk-` in any error description. `GenerationConfig`: defaults and Info.plist overrides |
-| `OpenMojiMessagesTests` (xcodebuild, simulator) | CI | Real Keychain round-trip in the shared access group; `AppModel` state transitions with fake services (no key → library with Set up OpenMoji, failure keeps prompt, cancel, Keep and Regenerate) |
+| `OpenMojiMessagesTests` (xcodebuild, simulator) | CI | Real Keychain round-trip in the shared access group; `AppModel` state transitions with fake services (no key → library with Set up OpenMoji, failure keeps prompt, cancel, Keep, Regenerate and Discard) |
 | [Device checklist](device-checklist.md) (manual) | iPad Air, TestFlight build | The PRD acceptance criteria verbatim, plus A3–A5, Instruments peak memory (§7.2) and a dark-bubble halo check |
 | Release lane self-tests (`make release-test`) | Mac host: CI and locally | `scripts/test-release.sh` runs the real `release.sh` with every external tool stubbed (preflight failures, key scan, cleanup, steps 8–9 order and tag rules, `op-run.sh`); `scripts/test-asc.sh` runs `asc.swift` against a stub App Store Connect server (JWT shape and signature, polling, errors, `whatsNew` bodies, group add/no-op, `latest-build` output) |
 | M1 spike | Throwaway script | §9 evaluation |
@@ -559,7 +559,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
 | FR-8 | Request body `n:1`, `background:transparent`, `output_format:png` (§5.1) | Request-builder stub test |
 | FR-9 | `GenerationConfig` from Info.plist build settings (§3), ADR-0013 | `GenerationConfig` test |
 | FR-10 | Generating state + Task cancellation (§2, §10) | `AppModel` cancel test |
-| FR-11 | Preview with Keep / Regenerate (§10) | `AppModel` tests |
+| FR-11 | Preview with Keep / Regenerate / Discard (§10) | `AppModel` tests |
 | FR-12 | Editable prompt in Preview (§10) | `AppModel` test |
 | FR-13 | `StickerProcessor` ImageIO thumbnail ≤ 618 px, alpha kept (§7), ADR-0004 | Processor fixture tests |
 | FR-14 | PNG step-down ladder 618 → 300, < 500 KB (§7) | Noise-fixture test |

@@ -925,6 +925,69 @@ struct AppModelRegenerateTests {
     }
 }
 
+/// Discard (tech spec §10): leave Preview without Keep. The sticker is dropped,
+/// nothing is written (FR-24), and the user is back on Compose with the prompt.
+/// The view disables the button while a Keep runs (`isKeeping`, covered by the
+/// Keep tests).
+@MainActor
+struct AppModelDiscardTests {
+    @Test func discardReturnsToComposeWithThePromptAndLeavesTheLibraryAlone() async {
+        let older = makeSticker(prompt: "older")
+        let rig = await previewRig(prompt: "a brave fox", library: FakeLibrary(stickers: [older]))
+        await rig.model.reloadLibrary()
+        #expect(rig.model.route == .preview)
+
+        rig.model.dismissPreview()
+
+        #expect(rig.model.state == .idle)
+        #expect(rig.model.route == .compose)
+        #expect(rig.model.previewSticker == nil)
+        #expect(rig.model.prompt == "a brave fox")
+        #expect(rig.model.stickers == [older])
+        #expect(await rig.library.keepAttempts == 0)
+        #expect(await rig.library.kept.isEmpty)
+    }
+
+    @Test func discardKeepsThePromptAsEditedInPreview() async {
+        let rig = await previewRig(prompt: "a brave fox")
+        rig.model.prompt = "a brave fox in a boat"
+
+        rig.model.dismissPreview()
+
+        #expect(rig.model.route == .compose)
+        #expect(rig.model.prompt == "a brave fox in a boat")
+        #expect(await rig.library.keepAttempts == 0)
+    }
+
+    @Test func discardAfterAFailedKeepLeavesTheLibraryEmptyAndKeepsThePrompt() async {
+        let rig = await previewRig()
+        await rig.library.failKeeps(true)
+        await rig.model.keep()
+        #expect(rig.model.route == .preview)
+
+        rig.model.dismissPreview()
+
+        #expect(rig.model.route == .compose)
+        #expect(rig.model.prompt == defaultTestPrompt)
+        #expect(rig.model.stickers.isEmpty)
+        #expect(await rig.library.kept.isEmpty)
+    }
+
+    @Test func generatingAfterADiscardStartsFromThePromptThatWasKept() async {
+        let rig = await previewRig(prompt: "a brave fox")
+        rig.model.dismissPreview()
+
+        await rig.generator.enqueue(.success(makeProcessedSticker(prompt: "a brave fox")), for: "a brave fox")
+        #expect(rig.model.canGenerate)
+        rig.model.generate()
+        await settle(rig.model)
+
+        #expect(rig.model.route == .preview)
+        #expect(await rig.generator.prompts == ["a brave fox", "a brave fox"])
+        #expect(await rig.library.keepAttempts == 0)
+    }
+}
+
 /// One entry per `GenerationError` case, so the error-state tests cover every
 /// case. `init(_:)` and `sample` switch exhaustively: a new `GenerationError`
 /// case fails to compile here until it has a kind and a sample, and is then
