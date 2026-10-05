@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 //
 // Generates the PLACEHOLDER icon PNGs for both targets (bead openmoji-yyw).
-// Real artwork is tracked in openmoji-98g.1; replace the PNGs, not this script.
+// SUPERSEDED by scripts/make-icons.swift (openmoji-98g.1), which renders the real artwork; kept for reference.
 //
 // For every image slot that names a file in the two Contents.json files below,
 // this renders an opaque amber square/rectangle with a dark "OM" glyph at the
