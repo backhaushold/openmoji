@@ -6,7 +6,7 @@ import UIKit
 
 // The library grid's state in `AppModel` (tech spec §10, FR-17, NFR-10):
 // reading the library newest first, reloading after a change (what Keep and
-// Delete will call), and building each cell's `MSSticker`.
+// Delete call), deleting a sticker (FR-19), and building each cell's `MSSticker`.
 
 @MainActor
 private func makeModel(library: any StickerLibrary) -> AppModel {
@@ -103,6 +103,86 @@ struct LibraryReloadTests {
     }
 }
 
+@MainActor
+struct LibraryDeleteTests {
+    @Test func deletingRemovesTheStickerAndLeavesTheOthersInOrder() async {
+        let newest = makeSticker(prompt: "newest", createdAt: Date(timeIntervalSince1970: 3_000_000))
+        let middle = makeSticker(prompt: "middle", createdAt: Date(timeIntervalSince1970: 2_000_000))
+        let oldest = makeSticker(prompt: "oldest", createdAt: Date(timeIntervalSince1970: 1_000_000))
+        let library = FakeLibrary(stickers: [newest, middle, oldest])
+        let model = makeModel(library: library)
+        await model.reloadLibrary()
+
+        await model.delete(middle)
+
+        #expect(model.stickers == [newest, oldest])
+        #expect(await library.deleted == [middle.id])
+    }
+
+    @Test func deletingReadsTheLibraryAgainAfterTheDelete() async {
+        let sticker = makeSticker()
+        let library = FakeLibrary(stickers: [sticker])
+        let model = makeModel(library: library)
+        await model.reloadLibrary()
+        #expect(await library.readCount == 1)
+
+        await model.delete(sticker)
+        #expect(await library.readCount == 2)
+    }
+
+    @Test func deletingTheLastStickerEmptiesTheList() async {
+        let sticker = makeSticker()
+        let model = makeModel(library: FakeLibrary(stickers: [sticker]))
+        await model.reloadLibrary()
+
+        await model.delete(sticker)
+        #expect(model.stickers.isEmpty)
+    }
+
+    @Test func aFailedDeleteIsLoggedAndLeavesTheList() async {
+        let first = makeSticker(prompt: "first")
+        let second = makeSticker(prompt: "second")
+        let library = FakeLibrary(stickers: [first, second])
+        let model = makeModel(library: library)
+        await model.reloadLibrary()
+
+        await library.failDeletes(true)
+        await model.delete(first)
+
+        #expect(model.stickers == [first, second])
+        #expect(await library.deleteAttempts == 1)
+        #expect(await library.deleted.isEmpty)
+        // It gives up without re-reading, so nothing else could have changed.
+        #expect(await library.readCount == 1)
+    }
+
+    @Test func deletingAgainAfterAFailureWorks() async {
+        let first = makeSticker(prompt: "first")
+        let second = makeSticker(prompt: "second")
+        let library = FakeLibrary(stickers: [first, second])
+        let model = makeModel(library: library)
+        await model.reloadLibrary()
+
+        await library.failDeletes(true)
+        await model.delete(first)
+        await library.failDeletes(false)
+        await model.delete(first)
+
+        #expect(model.stickers == [second])
+    }
+
+    @Test func deletingDoesNotChangeTheRouteOrTheState() async {
+        let sticker = makeSticker()
+        let model = makeModel(library: FakeLibrary(stickers: [sticker]))
+        model.presentationStyle = .expanded
+        await model.reloadLibrary()
+
+        await model.delete(sticker)
+        #expect(model.route == .library)
+        #expect(model.state == .idle)
+    }
+}
+
 /// The real `LibraryStore` behind the seam: what Keep writes, the grid reads,
 /// newest first, from files `MSSticker` can load in place.
 @MainActor
@@ -154,6 +234,28 @@ struct LibraryStoreWiringTests {
         for sticker in model.stickers {
             let png = try Data(contentsOf: model.fileURL(for: sticker))
             #expect(png == makeProcessedSticker().png)
+        }
+    }
+
+    @Test func deletingThroughTheModelRemovesTheStickerAndItsFileAndLeavesTheOthers() async throws {
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LibraryStore(root: directory)
+        let model = makeModel(library: store)
+
+        let first = try await store.keep(makeProcessedSticker(prompt: "first"), at: Date(timeIntervalSince1970: 1_000_000))
+        let second = try await store.keep(makeProcessedSticker(prompt: "second"), at: Date(timeIntervalSince1970: 2_000_000))
+        let third = try await store.keep(makeProcessedSticker(prompt: "third"), at: Date(timeIntervalSince1970: 3_000_000))
+        await model.reloadLibrary()
+        #expect(model.stickers == [third, second, first])
+
+        await model.delete(second)
+
+        #expect(model.stickers == [third, first])
+        #expect(try await store.stickers() == [third, first])
+        #expect(!FileManager.default.fileExists(atPath: store.fileURL(for: second).path))
+        for kept in [third, first] {
+            #expect(try Data(contentsOf: store.fileURL(for: kept)) == makeProcessedSticker().png)
         }
     }
 }
