@@ -24,7 +24,7 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
 
 - [ ] **AC-1** Fresh install with no key: opening the extension lands on the library with a "Set up OpenMoji" button that leads to the settings sheet; a valid key saves and the library shows "New sticker".
   - Source: AC-1; FR-5 (§13), FR-1, FR-4; [ADR-0017](adr/0017-expanded-first-layout.md)
-  - How: delete OpenMoji from the iPad and reinstall from TestFlight. Open Messages, open OpenMoji from the app drawer, expand it. The empty library shows with "Set up OpenMoji" (not "New sticker"); tap it and the settings sheet opens. Enter a valid key (needs internet for validation); Save. The library shows again, now with "New sticker".
+  - How: start with no key. Deleting and reinstalling OpenMoji is not enough: the Keychain key survives a reinstall, and that is intended (user decision 2026-10-05). So open Settings from the gear in Compose and tap Clear (and delete every sticker if you want the empty state). Open Messages, open OpenMoji from the app drawer, expand it. The empty library shows with "Set up OpenMoji" (not "New sticker"); tap it and the settings sheet opens. Enter a valid key (needs internet for validation); Save. The library shows again, now with "New sticker".
   - Notes:
 
 - [ ] **AC-2** A typical prompt yields a sticker with a transparent background in under 30 s on Wi-Fi.
@@ -140,7 +140,7 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
 
 - [ ] **FR-1** The settings sheet is reachable from the expanded view and takes the key.
   - Source: FR-1 (§13, §8)
-  - How: in the expanded view, open Settings from the gear. One secure field, Save and Clear are there. Enter something that doesn't start with `sk-`: "That doesn't look like an OpenAI key" and no network call.
+  - How: open Settings from the gear on the Compose screen (the library screen has no gear; with no key, its Set up OpenMoji button opens Settings). One secure field, Save and Clear are there. Enter something that doesn't start with `sk-`: "That doesn't look like an OpenAI key" and no network call.
   - Notes:
 
 - [ ] **FR-3** After saving, only the last four characters of the key are shown; Clear removes the key.
