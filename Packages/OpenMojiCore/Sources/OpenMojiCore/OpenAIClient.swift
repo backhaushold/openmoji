@@ -3,7 +3,9 @@ import OSLog
 
 /// Plain `URLSession` client for `POST /v1/images/generations`
 /// (tech spec §5, ADR-0002, ADR-0003). No SDK, no retries: every attempt
-/// costs money, so a retry is the user's Regenerate (D3, D7).
+/// costs money, so a retry is the user's Regenerate (D3, D7). The same session
+/// also makes the free moderation calls (OpenAIClient+Moderation.swift,
+/// ADR-0019) and the key check (OpenAIClient+Validation.swift).
 ///
 /// Every failure is a `GenerationError`: HTTP errors and transport errors go
 /// through `ErrorMapper`, and an undecodable success body is
@@ -64,6 +66,14 @@ public actor OpenAIClient {
             throw .processingFailed
         }
 
+        return try await Self.decodeImage(from: send(request))
+    }
+
+    /// Sends `request` and returns the body of a 2xx response. Everything else
+    /// is a `GenerationError` via `ErrorMapper`. Shared by `generate` and the
+    /// moderation calls (OpenAIClient+Moderation.swift), so both fail the
+    /// same way.
+    func send(_ request: URLRequest) async throws(GenerationError) -> Data {
         let data: Data
         let response: URLResponse
         do {
@@ -83,7 +93,7 @@ public actor OpenAIClient {
             }
             throw ErrorMapper.map(status: http.statusCode, headers: headers, body: data)
         }
-        return try Self.decodeImage(from: data)
+        return data
     }
 
     // MARK: Request (§5.1)

@@ -2,7 +2,7 @@
 
 An iPad-only iMessage app extension that turns a text prompt into an emoji-style sticker. Type "grumpy cat", get a transparent-background sticker, keep it in a library, and send it from Messages.
 
-- **Generation:** the OpenAI Images API (`/v1/images/generations`, model alias `gpt-image-2.5-flare`, quality `medium`), called from our own `URLSession` client.
+- **Generation:** the OpenAI Images API (`/v1/images/generations`, model alias `gpt-image-2.5-flare`, quality `medium`), called from our own `URLSession` client. The prompt text before it, and the sticker after it, are screened with OpenAI's free moderation endpoint ([ADR-0019](docs/adr/0019-moderation-check.md)).
 - **Audience:** family use. Distributed through TestFlight to internal testers only; it is never submitted to the App Store.
 - **No backend.** The app talks straight to OpenAI.
 - **No third-party dependencies** (NFR-7): no SDKs, no Swift packages beyond our own local `OpenMojiCore`.
