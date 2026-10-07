@@ -1140,9 +1140,9 @@ check "Makefile: make testflight-status runs asc.swift latest-build through op-r
 make_release_test_dry_run() {
   local plan
   plan=$(make -n -C "$ROOT" release-test)
-  [ "$plan" = "$(printf 'scripts/test-release.sh\nscripts/test-asc.sh\nscripts/test-inactivity-guard.sh')" ]
+  [ "$plan" = "$(printf 'scripts/test-release.sh\nscripts/test-asc.sh\nscripts/test-inactivity-guard.sh\nscripts/test-testflight-expiry.sh')" ]
 }
-check "Makefile: make release-test runs test-release.sh, test-asc.sh, then test-inactivity-guard.sh" make_release_test_dry_run
+check "Makefile: make release-test runs test-release.sh, test-asc.sh, test-inactivity-guard.sh, then test-testflight-expiry.sh" make_release_test_dry_run
 
 # The root .env.example is the committed template for the git-ignored .env.
 root_env_assignments() { grep -vE '^[[:space:]]*(#|$)' "$ROOT/.env.example"; }

@@ -25,8 +25,10 @@ op-check:
 # Self-test of the lane scripts. Stubs every external tool: no signing, no
 # network, no 1Password, no App Store Connect. test-asc.sh exercises
 # scripts/asc.swift against a stub HTTP server on 127.0.0.1.
-# test-inactivity-guard.sh runs scripts/inactivity-guard.sh with a stub `gh`.
+# test-inactivity-guard.sh and test-testflight-expiry.sh run scripts/inactivity-guard.sh
+# and scripts/testflight-expiry.sh with a stub `gh`.
 release-test:
 	scripts/test-release.sh
 	scripts/test-asc.sh
 	scripts/test-inactivity-guard.sh
+	scripts/test-testflight-expiry.sh
