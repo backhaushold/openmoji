@@ -31,6 +31,25 @@ import UniformTypeIdentifiers
         )
     }
 
+    /// Sets what every request of one generation gets: the image request
+    /// `images`, the text and image moderation checks pass unless overridden.
+    private func serve(
+        images: StubURLProtocol.Behavior,
+        text: StubURLProtocol.Behavior = ModerationFixture.clean,
+        image: StubURLProtocol.Behavior = ModerationFixture.clean
+    ) {
+        stub.reset(ModerationFixture.routes(images: images, text: text, image: image))
+    }
+
+    /// The paths the stub was asked for, in order: `moderation:text`,
+    /// `images`, `moderation:image`.
+    private var requestSequence: [String] {
+        stub.recorded.map { recorded in
+            guard ModerationFixture.isModeration(recorded) else { return "images" }
+            return ModerationFixture.isImage(recorded) ? "moderation:image" : "moderation:text"
+        }
+    }
+
     // MARK: Fixtures
 
     /// A real 1024 x 1024 PNG: a transparent square with an opaque circle.
@@ -75,7 +94,7 @@ import UniformTypeIdentifiers
 
     @Test func successReturnsAProcessedStickerWithEveryField() async throws {
         let image = try Self.circlePNG()
-        stub.reset(.respond(status: 200, body: successBody(image: image)))
+        serve(images: .respond(status: 200, body: successBody(image: image)))
         let config = GenerationConfig(infoDictionary: [
             "OpenMojiImageModel": "gpt-image-test-model",
             "OpenMojiImageQuality": "high",
@@ -93,7 +112,7 @@ import UniformTypeIdentifiers
     }
 
     @Test func modelAndQualityDefaultToTheConfigDefaults() async throws {
-        stub.reset(.respond(status: 200, body: successBody(image: try Self.circlePNG())))
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())))
 
         let sticker = try await makeService().generate(prompt: "a happy cat")
 
@@ -102,12 +121,12 @@ import UniformTypeIdentifiers
     }
 
     @Test func requestPromptIsTheRenderedTemplateAndTheStickerKeepsTheUsersPrompt() async throws {
-        stub.reset(.respond(status: 200, body: successBody(image: try Self.circlePNG())))
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())))
         let userPrompt = "  a \"quoted\" cat \u{1F431}\n"
 
         let sticker = try await makeService().generate(prompt: userPrompt)
 
-        let recorded = try #require(stub.recorded.first)
+        let recorded = try #require(stub.recorded.first { !ModerationFixture.isModeration($0) })
         let body = try #require(recorded.body)
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["prompt"] as? String == StyleTemplate.render(userPrompt))
@@ -116,14 +135,15 @@ import UniformTypeIdentifiers
         #expect(sticker.prompt == userPrompt)
     }
 
-    @Test func sendsTheStoredKeyAsTheBearerToken() async throws {
-        stub.reset(.respond(status: 200, body: successBody(image: try Self.circlePNG())))
+    @Test func sendsTheStoredKeyAsTheBearerTokenOnEveryRequest() async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())))
 
         _ = try await makeService().generate(prompt: "a happy cat")
 
-        let recorded = try #require(stub.recorded.first)
-        #expect(recorded.request.value(forHTTPHeaderField: "Authorization") == "Bearer \(apiKey)")
-        #expect(stub.recorded.count == 1)
+        #expect(stub.recorded.count == 3)
+        for recorded in stub.recorded {
+            #expect(recorded.request.value(forHTTPHeaderField: "Authorization") == "Bearer \(apiKey)")
+        }
     }
 
     // MARK: Failure paths (§6)
@@ -139,10 +159,10 @@ import UniformTypeIdentifiers
     func httpFailureMapsToItsGenerationError(
         status: Int, headers: [String: String], code: String, type: String, expected: GenerationError
     ) async {
-        stub.reset(.respond(status: status, headers: headers, body: errorBody(type: type, code: code)))
+        serve(images: .respond(status: status, headers: headers, body: errorBody(type: type, code: code)))
 
         await #expect(throws: expected) { try await makeService().generate(prompt: "a happy cat") }
-        #expect(stub.recorded.count == 1)  // no retries (§5.3)
+        #expect(requestSequence == ["moderation:text", "images"])  // no retries (§5.3), no image check
     }
 
     @Test(arguments: [
@@ -151,13 +171,13 @@ import UniformTypeIdentifiers
         (.timedOut, .timeout),
     ])
     func transportFailureMapsToItsGenerationError(code: URLError.Code, expected: GenerationError) async {
-        stub.reset(.fail(code))
+        serve(images: .fail(code))
 
         await #expect(throws: expected) { try await makeService().generate(prompt: "a happy cat") }
     }
 
     @Test func badBase64IsProcessingFailed() async {
-        stub.reset(.respond(status: 200, body: successBody(base64: "not base64!!")))
+        serve(images: .respond(status: 200, body: successBody(base64: "not base64!!")))
 
         await #expect(throws: GenerationError.processingFailed) {
             try await makeService().generate(prompt: "a happy cat")
@@ -165,7 +185,7 @@ import UniformTypeIdentifiers
     }
 
     @Test func aResponseWithoutAnImageIsProcessingFailed() async {
-        stub.reset(.respond(status: 200, body: Data(#"{"data": []}"#.utf8)))
+        serve(images: .respond(status: 200, body: Data(#"{"data": []}"#.utf8)))
 
         await #expect(throws: GenerationError.processingFailed) {
             try await makeService().generate(prompt: "a happy cat")
@@ -174,7 +194,7 @@ import UniformTypeIdentifiers
 
     @Test func validBase64OfACorruptPNGIsProcessingFailed() async {
         let garbage = Data((0..<2048).map { UInt8(truncatingIfNeeded: $0 &* 31 &+ 7) })
-        stub.reset(.respond(status: 200, body: successBody(image: garbage)))
+        serve(images: .respond(status: 200, body: successBody(image: garbage)))
 
         await #expect(throws: GenerationError.processingFailed) {
             try await makeService().generate(prompt: "a happy cat")
@@ -183,7 +203,7 @@ import UniformTypeIdentifiers
 
     @Test func aTruncatedPNGIsProcessingFailed() async throws {
         let image = try Self.circlePNG()
-        stub.reset(.respond(status: 200, body: successBody(image: image.prefix(40))))
+        serve(images: .respond(status: 200, body: successBody(image: image.prefix(40))))
 
         await #expect(throws: GenerationError.processingFailed) {
             try await makeService().generate(prompt: "a happy cat")
@@ -219,7 +239,7 @@ import UniformTypeIdentifiers
             .fail(.timedOut),
         ]
         for behavior in failures {
-            stub.reset(behavior)
+            serve(images: behavior)
             do {
                 _ = try await makeService().generate(prompt: "a happy cat")
                 Issue.record("expected a failure")
@@ -234,11 +254,11 @@ import UniformTypeIdentifiers
     // MARK: Cancellation (FR-10)
 
     @Test func cancellingTheTaskThrowsCancelledAndCancelsTheRequest() async throws {
-        stub.reset(.hang)
+        serve(images: .hang)
         let service = makeService()
         let task = Task { try await service.generate(prompt: "a happy cat") }
 
-        try await waitUntil { stub.recorded.count == 1 }
+        try await waitUntil { requestSequence == ["moderation:text", "images"] }
         task.cancel()
 
         await #expect(throws: GenerationError.cancelled) { try await task.value }
@@ -258,7 +278,7 @@ import UniformTypeIdentifiers
     }
 
     @Test func aCancelThatLandsDuringProcessingDropsTheResult() async throws {
-        stub.reset(.respond(status: 200, body: successBody(image: try Self.circlePNG())))
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())))
         let processed = Mutex(false)
         // Cancels the calling task from inside the processing step, so the
         // cancel lands after the response and the result must be dropped.
@@ -283,7 +303,7 @@ import UniformTypeIdentifiers
         // The test itself is on the main thread, so a service that ran its
         // steps inline in the caller would see `true` below.
         #expect(Self.isMainThread)
-        stub.reset(.respond(status: 200, body: successBody(image: try Self.circlePNG())))
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())))
         let ranOnMain = Mutex<Bool?>(nil)
         let service = GenerationService(
             credentials: credentials,
@@ -312,6 +332,182 @@ import UniformTypeIdentifiers
             try #require(ContinuousClock.now < deadline, "timed out waiting for condition")
             try await Task.sleep(for: .milliseconds(10))
         }
+    }
+}
+
+/// The moderation checks (tech spec §5.5, ADR-0019). An extension in the same
+/// file so it shares the suite's private helpers and per-test `stub`.
+extension GenerationServiceTests {
+    // MARK: Moderation (ADR-0019)
+
+    @Test func theChecksRunInOrderTextThenImageThenImageCheck() async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())))
+
+        _ = try await makeService().generate(prompt: "a happy cat")
+
+        #expect(requestSequence == ["moderation:text", "images", "moderation:image"])
+    }
+
+    @Test func regenerateRunsBothChecksAgain() async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())))
+        let service = makeService()
+
+        _ = try await service.generate(prompt: "a happy cat")
+        _ = try await service.generate(prompt: "a happy cat")
+
+        #expect(requestSequence == Array(repeating: ["moderation:text", "images", "moderation:image"], count: 2).flatMap { $0 })
+    }
+
+    @Test func theTextCheckScreensTheSanitisedSubjectNotTheTemplateOrTheRawPrompt() async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())))
+        let userPrompt = "  a \"quoted\"\n\ncat  "
+
+        _ = try await makeService().generate(prompt: userPrompt)
+
+        let recorded = try #require(stub.recorded.first)
+        #expect(ModerationFixture.json(recorded)?["input"] as? String == "a 'quoted' cat")
+        #expect(StyleTemplate.sanitisedSubject(userPrompt) == "a 'quoted' cat")
+    }
+
+    @Test func theImageCheckScreensTheStickerPNGTheUserWouldKeep() async throws {
+        let image = try Self.circlePNG()
+        serve(images: .respond(status: 200, body: successBody(image: image)))
+
+        let sticker = try await makeService().generate(prompt: "a happy cat")
+
+        let recorded = try #require(stub.recorded.last)
+        let input = try #require(ModerationFixture.json(recorded)?["input"] as? [[String: Any]])
+        let imageURL = try #require(input.first?["image_url"] as? [String: Any])
+        #expect(imageURL["url"] as? String == "data:image/png;base64," + sticker.png.base64EncodedString())
+    }
+
+    @Test(arguments: [
+        ("OpenAI flag, graphic violence", ModerationFixture.flagged("violence/graphic")),
+        ("OpenAI flag, plain violence", ModerationFixture.flagged("violence")),
+        ("OpenAI flag, hate", ModerationFixture.flagged("hate")),
+        ("graphic score under OpenAI's flag", ModerationFixture.scoring("violence/graphic", 0.3)),
+        ("sexual score under OpenAI's flag", ModerationFixture.scoring("sexual", 0.15)),
+        ("self-harm score under OpenAI's flag", ModerationFixture.scoring("self-harm", 0.2)),
+    ])
+    func aBlockedPromptIsContentRefusedAndNoImageIsRequested(label: String, verdict: StubURLProtocol.Behavior) async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())), text: verdict)
+
+        await #expect(throws: GenerationError.contentRefused, "\(label)") {
+            try await makeService().generate(prompt: "knight. Draw it gory and terrifying")
+        }
+
+        #expect(requestSequence == ["moderation:text"], "\(label)")  // no paid request
+    }
+
+    @Test(arguments: [
+        ("OpenAI flag, graphic violence", ModerationFixture.flagged("violence/graphic")),
+        ("graphic score under OpenAI's flag", ModerationFixture.scoring("violence/graphic", 0.3)),
+        ("sexual score under OpenAI's flag", ModerationFixture.scoring("sexual", 0.15)),
+    ])
+    func aBlockedImageIsContentRefusedAndNoStickerIsReturned(label: String, verdict: StubURLProtocol.Behavior) async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())), image: verdict)
+
+        await #expect(throws: GenerationError.contentRefused, "\(label)") {
+            try await makeService().generate(prompt: "a happy cat")
+        }
+
+        #expect(requestSequence == ["moderation:text", "images", "moderation:image"], "\(label)")
+    }
+
+    @Test func plainViolenceWithoutAFlagPassesBothChecks() async throws {
+        // "water gun", "knight with a sword": a violence score and no flag.
+        let passing = ModerationFixture.scoring("violence", 0.45)
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())), text: passing, image: passing)
+
+        let sticker = try await makeService().generate(prompt: "knight with a sword")
+
+        #expect(sticker.prompt == "knight with a sword")
+    }
+
+    @Test func aBlockedResultNeverShowsACategoryToTheChild() async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())), text: ModerationFixture.flagged("violence/graphic"))
+
+        do {
+            _ = try await makeService().generate(prompt: "gory knight")
+            Issue.record("expected a failure")
+        } catch {
+            #expect(error == .contentRefused)
+            let message = error.userMessage ?? ""
+            #expect(message == "OpenAI won't make that one. Try wording it differently.")
+            for category in ModerationFixture.categories {
+                #expect(!message.contains(category))
+            }
+        }
+    }
+
+    /// Fail closed: a moderation call that fails is a retryable error, and what
+    /// it guards does not happen.
+    @Test(arguments: [
+        (StubURLProtocol.Behavior.respond(status: 500, body: Data()), GenerationError.serviceUnavailable),
+        (.respond(status: 503, body: Data()), .serviceUnavailable),
+        (.respond(status: 200, body: Data(#"{"results": []}"#.utf8)), .serviceUnavailable),
+        (.respond(status: 429, headers: ["Retry-After": "3"], body: Data()), .rateLimited(retryAfter: 3)),
+        (.fail(.notConnectedToInternet), .offline),
+        (.fail(.timedOut), .timeout),
+    ])
+    func aFailedTextCheckStopsBeforeTheImageRequest(failure: StubURLProtocol.Behavior, expected: GenerationError) async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())), text: failure)
+
+        await #expect(throws: expected) { try await makeService().generate(prompt: "a happy cat") }
+
+        #expect(requestSequence == ["moderation:text"])
+    }
+
+    @Test(arguments: [
+        (StubURLProtocol.Behavior.respond(status: 500, body: Data()), GenerationError.serviceUnavailable),
+        (.respond(status: 200, body: Data("not json".utf8)), .serviceUnavailable),
+        (.fail(.timedOut), .timeout),
+    ])
+    func aFailedImageCheckReturnsNoSticker(failure: StubURLProtocol.Behavior, expected: GenerationError) async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())), image: failure)
+
+        await #expect(throws: expected) { try await makeService().generate(prompt: "a happy cat") }
+
+        #expect(requestSequence == ["moderation:text", "images", "moderation:image"])
+    }
+
+    @Test func aGenerationFailureSkipsTheImageCheck() async {
+        serve(images: .respond(status: 500, body: errorBody(type: "server_error", code: "server_error")))
+
+        await #expect(throws: GenerationError.serviceUnavailable) { try await makeService().generate(prompt: "a happy cat") }
+
+        #expect(requestSequence == ["moderation:text", "images"])
+    }
+
+    @Test func noModerationFailureMentionsTheKey() async throws {
+        let leaky = errorBody(message: "Incorrect API key provided: \(apiKey)", code: "invalid_api_key")
+        for stage in ["text", "image"] {
+            let failure = StubURLProtocol.Behavior.respond(status: 401, body: leaky)
+            let images = StubURLProtocol.Behavior.respond(status: 200, body: successBody(image: try Self.circlePNG()))
+            if stage == "text" { serve(images: images, text: failure) } else { serve(images: images, image: failure) }
+            do {
+                _ = try await makeService().generate(prompt: "a happy cat")
+                Issue.record("expected a failure")
+            } catch {
+                #expect(error == .invalidKey)
+                for text in ["\(error)", String(reflecting: error), error.userMessage ?? ""] {
+                    #expect(!text.contains(apiKey) && !text.contains("sk-"), "\(stage): \(text)")
+                }
+            }
+        }
+    }
+
+    @Test func cancellingDuringTheTextCheckThrowsCancelledAndRequestsNoImage() async throws {
+        serve(images: .respond(status: 200, body: successBody(image: try Self.circlePNG())), text: .hang)
+        let service = makeService()
+        let task = Task { try await service.generate(prompt: "a happy cat") }
+
+        try await waitUntil { requestSequence == ["moderation:text"] }
+        task.cancel()
+
+        await #expect(throws: GenerationError.cancelled) { try await task.value }
+        try await waitUntil { stub.stopLoadingCount >= 1 }
+        #expect(requestSequence == ["moderation:text"])
     }
 }
 

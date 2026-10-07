@@ -2,8 +2,9 @@ import Foundation
 import OSLog
 
 /// One call from a prompt to a sticker ready to preview and Keep
-/// (tech spec §2 flow): load the key, render the style template, ask OpenAI,
-/// decode, and turn the image into a Messages-compliant PNG.
+/// (tech spec §2 flow): load the key, moderate the prompt text, render the
+/// style template, ask OpenAI, decode, turn the image into a
+/// Messages-compliant PNG, and moderate that PNG (ADR-0019).
 ///
 /// Every failure is a `GenerationError` (§6). It never touches `LibraryStore`:
 /// a failed or cancelled generation produces no `ProcessedSticker`, so there is
@@ -59,12 +60,24 @@ public struct GenerationService: Sendable {
     /// - Throws: `.invalidKey` when there is no key, or the Keychain can't be
     ///   read: the spec doesn't say which case fits, and `.invalidKey` is the
     ///   one whose message ("Check it in Settings.") tells the user what to do.
-    ///   `.cancelled` when the calling task is cancelled. Every other case comes
-    ///   from the client (§6), and `.processingFailed` from the image step.
+    ///   `.cancelled` when the calling task is cancelled. `.contentRefused`
+    ///   when the moderation check blocks the prompt (no image request is made)
+    ///   or the generated image (it is dropped). A moderation call that fails
+    ///   is that call's error from the client (§6): it fails closed, so
+    ///   nothing is generated or returned. Every other case comes from the
+    ///   client (§6), and `.processingFailed` from the image step.
     @concurrent
     public func generate(prompt: String) async throws(GenerationError) -> ProcessedSticker {
         try checkCancelled()
         let apiKey = try loadKey()
+
+        // The free text check goes first, so a blocked prompt never reaches
+        // the paid call. It screens the sanitised subject: the words the image
+        // model will read from the user.
+        let subject = StyleTemplate.sanitisedSubject(prompt)
+        let promptVerdict = try await client.moderate(text: subject, apiKey: apiKey)
+        try enforce(ModerationPolicy.decide(promptVerdict), on: "prompt")
+        try checkCancelled()
 
         let encoded = try await client.generate(prompt: StyleTemplate.render(prompt), apiKey: apiKey)
 
@@ -80,6 +93,11 @@ public struct GenerationService: Sendable {
         }
         try checkCancelled()
 
+        // The image is screened as the PNG the user would see and Keep.
+        let imageVerdict = try await client.moderate(imagePNG: sticker.png, apiKey: apiKey)
+        try enforce(ModerationPolicy.decide(imageVerdict), on: "image")
+        try checkCancelled()
+
         return ProcessedSticker(
             prompt: prompt,
             modelID: config.model,
@@ -87,6 +105,19 @@ public struct GenerationService: Sendable {
             png: sticker.png,
             edge: sticker.edge
         )
+    }
+
+    /// Turns a blocking decision into `.contentRefused`. The log carries the
+    /// stage and OpenAI's category names, never the prompt or the key.
+    private func enforce(_ decision: ModerationDecision, on stage: String) throws(GenerationError) {
+        guard case .block(let reasons) = decision else { return }
+        // openmoji-6dr.4 (parental prompt log): a blocked prompt is the one a
+        // parent most wants to see, so record it here when that lands.
+        Self.logger.notice("""
+            moderation blocked the \(stage, privacy: .public) \
+            categories=\(reasons.joined(separator: ","), privacy: .public)
+            """)
+        throw .contentRefused
     }
 
     private func checkCancelled() throws(GenerationError) {

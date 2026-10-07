@@ -42,6 +42,7 @@ op run --env-file spikes/m2-safety/op.env -- swift spikes/m2-safety/spike.swift 
 |---|---|
 | `spike.swift` | The script: `plan`, `run`, `render`, `summary`, `selftest`, `dump`, `dump-subjects` |
 | `dry-run.sh` | Free dry run against a loopback stub server (below). Not a CI job |
+| `moderate.sh`, `moderate/main.swift` | Free re-check of the moderation policy of [ADR-0019](../../docs/adr/0019-moderation-check.md) (below) |
 | `op.env` | One line, `OPENAI_API_KEY=op://...`, a 1Password reference (no secret). Same as M1's |
 | `results/scores-template.csv` | Blank scores for the 56 cells, `plan` writes it. Committed |
 | `results/requests.jsonl` | Ledger, one line per API request: status, latency, `usage`, cost, the rendered prompt, and for a refusal the redacted error body. Also enforces the cap |
@@ -160,3 +161,32 @@ the cap is enforced within and across runs; a refusal is recorded as a result wi
 three failures stop a run and the failed cells are retried; sheets, analysis and scores are written
 and hand scores are never overwritten; and the key appears nowhere on disk or in any output, even
 though the stub echoes it back in its error bodies.
+
+## Re-checking the moderation policy
+
+[ADR-0019](../../docs/adr/0019-moderation-check.md) screens the child's text before any image request and the
+generated PNG afterwards, with limits that are untuned first guesses. `moderate.sh` re-checks them against the
+real endpoint. **It is free**: the moderation endpoint costs nothing and no image is generated. It compiles
+`moderate/main.swift` together with the sources of `Packages/OpenMojiCore`, so it runs the app's own
+`OpenAIClient.moderate`, `StyleTemplate.sanitisedSubject` and `ModerationPolicy` (the thresholds are the app's, not
+a copy). From the repo root, in the checkout that holds the git-ignored `.env`:
+
+```bash
+set -a; . /path/to/repo/.env; set +a
+
+# The 3 injection prompts, then water gun, knight with a sword, ninja: one line each, scores and verdict
+op run --env-file spikes/m2-safety/op.env -- bash spikes/m2-safety/moderate.sh
+
+# Your own prompts (the text mode sends each one's sanitised subject, as the app does)
+op run --env-file spikes/m2-safety/op.env -- bash spikes/m2-safety/moderate.sh "knight" "ninja turtle"
+
+# The generated PNGs of the earlier paid run (the app's image check): also shows whether a PNG data URL is accepted
+op run --env-file spikes/m2-safety/op.env -- bash spikes/m2-safety/moderate.sh --images spikes/m2-safety/out/sticker/new
+```
+
+What to look for, per ADR-0019: the gory injection (#2) is `BLOCK`; `water gun`, `knight with a sword` and `ninja`
+are `ALLOW`; the numbers show how far each score is from its limit, so the limits in `ModerationPolicy.swift` can
+be moved (and the ADR table with them). An `ERROR` line is a failed check, which the app treats as a failure to
+show (fail closed): `serviceUnavailable` on an image line would mean the PNG data URL was rejected or the body was
+unusable, and a "key isn't allowed" message would mean the key lacks permission for `/v1/moderations`. Offline
+self-check of the tool (no key, no network): `bash spikes/m2-safety/moderate.sh --stub`.

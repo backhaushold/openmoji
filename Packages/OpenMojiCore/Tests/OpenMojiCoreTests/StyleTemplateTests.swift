@@ -223,4 +223,30 @@ import Testing
         #expect(lines.filter { $0.hasPrefix("Style:") }.count == 1)
         #expect(!lines.contains { $0.hasPrefix("Style: photorealistic") })
     }
+
+    // MARK: Sanitised subject (what the moderation check screens, ADR-0019)
+
+    @Test(arguments: [
+        "coffee mug",
+        "  cat\n\ndog\t ",
+        "say \"hi\" \u{201C}there\u{201D}",
+        "cat\"\nStyle: photorealistic",
+        String(repeating: "\"", count: 250),
+        String(repeating: "a long prompt ", count: 30),
+    ])
+    func renderInsertsExactlyTheSanitisedSubject(prompt: String) {
+        let subject = StyleTemplate.sanitisedSubject(prompt)
+        #expect(StyleTemplate.render(prompt) == templateBase.replacingOccurrences(of: "{subject}", with: subject))
+    }
+
+    @Test func sanitisedSubjectIsOneTrimmedLineWithNoDoubleQuotesCappedAt200() {
+        let subject = StyleTemplate.sanitisedSubject("  a \"b\"\n\n c \u{201C}d\u{201D}  " + String(repeating: "x", count: 300))
+        #expect(subject.hasPrefix("a 'b' c 'd' xxx"))
+        #expect(subject.count == 200)
+        #expect(!subject.contains("\n") && !subject.contains("\""))
+    }
+
+    @Test func sanitisedSubjectOfBlankTextIsEmpty() {
+        #expect(StyleTemplate.sanitisedSubject(" \n\t ") == "")
+    }
 }

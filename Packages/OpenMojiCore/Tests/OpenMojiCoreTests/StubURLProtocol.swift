@@ -20,6 +20,10 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         case fail(URLError.Code)
         /// Never answer; only `stopLoading` (cancellation) ends the load.
         case hang
+        /// Pick the behaviour per request, for flows that call more than one
+        /// endpoint (generation, then moderation). The closure's own result
+        /// must not be another `.route`.
+        case route(@Sendable (Recorded) -> Behavior)
     }
 
     struct Recorded: Sendable {
@@ -96,8 +100,10 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocol(self, didFailWithError: URLError(.unknown))
             return
         }
-        let body = Self.readBody(of: request)
-        switch stub.record(Recorded(request: request, body: body)) {
+        let recorded = Recorded(request: request, body: Self.readBody(of: request))
+        var behavior = stub.record(recorded)
+        if case .route(let pick) = behavior { behavior = pick(recorded) }
+        switch behavior {
         case .respond(let status, let headers, let body):
             let response = HTTPURLResponse(
                 url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers
@@ -107,7 +113,7 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
             client?.urlProtocolDidFinishLoading(self)
         case .fail(let code):
             client?.urlProtocol(self, didFailWithError: URLError(code))
-        case .hang:
+        case .hang, .route:
             break
         }
     }

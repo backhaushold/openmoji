@@ -39,7 +39,7 @@ Content: an original, child-friendly design. Never an existing character, brand 
 ## Alternatives
 - **Leave the template as is.** Rejected: it has no guard against the `rocket` class of output or a prompt that overrides the style rules, and the users are children.
 - **Option B: same quoting, but no negative list.** The last line would read `Content: an original, cheerful, gentle design for young children, like a picture-book sticker. Not an existing character, brand or real person. Read ambiguous words as the plain everyday object.` The reasoning for B is that naming "weapons" can prime an image model to draw them. Not chosen: A states the rule outright and the user approved it. B stays the fallback if the paid check (`openmoji-6dr.6`) shows A priming weapons or drifting in style.
-- **A free `omni-moderation-latest` text pre-check before the paid call.** Not now. It only matters if public release becomes real, along with a report-content path and App Store moderation rules, which are deferred.
+- **A free `omni-moderation-latest` text pre-check before the paid call.** Not now. It only matters if public release becomes real, along with a report-content path and App Store moderation rules, which are deferred. *Revisited the same day after the M2 safety run: adopted, for text and image, in [ADR-0019](0019-moderation-check.md).*
 - **An LLM rewrite or classify pass.** Rejected: extra cost, latency and a second model, for a four-person family app.
 - **Dropdown or allow-list subjects.** OpenAI's guide calls constrained inputs safer, but they remove the open-ended prompt that is the point of the app.
 - **Sending `user`.** Declined, as above.

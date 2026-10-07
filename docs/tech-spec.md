@@ -40,6 +40,7 @@ These do not change any locked decision, but the PRD text should be corrected.
 | A5 | `MSSticker` accepts file URLs inside the App Group container. **Verified** 2026-10-04 on the iPad Air (OQ-11) | None needed: no temp copy |
 | A6 | App Store Connect internal-testing groups can be set to auto-distribute new builds (confirmed 2026-10-03, OQ-13) | REL-5 falls back to an explicit API call (§12.5) |
 | A7 | The same Apple Distribution certificate (team `AB5S94XWRQ`) used by Sagelet can sign OpenMoji | Create a second distribution cert |
+| A8 | The key's **Model capabilities: Request** (A1) also covers `POST /v1/moderations`, and that endpoint accepts a `data:image/png;base64,…` URL (docs show only `jpeg`). **Unverified**: no real call was made; the free re-check in `spikes/m2-safety/README.md` confirms both ([ADR-0019](adr/0019-moderation-check.md)) | Every generation fails closed: `.keyNotPermitted` plus OpenAI's message, or `.serviceUnavailable` at the image check. Admin adds the scope, or the image check sends a JPEG re-encode |
 
 ---
 
@@ -66,19 +67,20 @@ flowchart LR
                 Cred["CredentialStore<br/>(Keychain)"]
                 Err["ErrorMapper"]
                 Cfg["GenerationConfig"]
+                Mod["ModerationPolicy"]
             end
         end
         AG[("App Group container<br/>group.com.backhaushold.openmoji")]
         KC[("Keychain<br/>access group …openmoji.shared")]
     end
     Messages["Messages.app<br/>(host)"]
-    OpenAI["OpenAI Images API<br/>/v1/images/generations"]
+    OpenAI["OpenAI API<br/>/v1/images/generations · /v1/moderations"]
     ASC["App Store Connect<br/>TestFlight"]
 
     Messages -- hosts --> VC
     VC --> UI --> VM
     VM --> Gen & Lib & Cred
-    Gen --> Prompt & Client & Proc & Err & Cfg
+    Gen --> Prompt & Client & Proc & Err & Cfg & Mod
     Client -- HTTPS --> OpenAI
     Client --> Cred
     Lib --> AG
@@ -87,7 +89,7 @@ flowchart LR
     ASC -. installs .-> Shell
 ```
 
-**Flow.** `AppModel` drives a small state machine: `needsKey → idle → generating(task) → preview(result) → idle`, with `failed(error, prompt)` returning to `idle` with the prompt intact (PRD core flow). `GenerationService.generate(prompt:)` is one `async throws` call: template → request → decode → process → `ProcessedSticker`. Keep writes to `LibraryStore`; Regenerate repeats `generate` with the same (or edited) prompt; Discard returns to `idle` with nothing written.
+**Flow.** `AppModel` drives a small state machine: `needsKey → idle → generating(task) → preview(result) → idle`, with `failed(error, prompt)` returning to `idle` with the prompt intact (PRD core flow). `GenerationService.generate(prompt:)` is one `async throws` call: key → **moderate the prompt text** → template → request → decode → process → **moderate the sticker PNG** → `ProcessedSticker` ([§5.5](#55-moderation-check-adr-0019), [ADR-0019](adr/0019-moderation-check.md): both free checks run on every generate and regenerate, and a blocked or failed check ends the call before the paid request or before the sticker is returned). Keep writes to `LibraryStore`; Regenerate repeats `generate` with the same (or edited) prompt; Discard returns to `idle` with nothing written.
 
 **Concurrency.** Swift 6 language mode, strict concurrency complete. `AppModel` is `@MainActor`; `OpenAIClient`, `LibraryStore` and `CredentialStore` are actors or `Sendable` structs; `StickerProcessor` is a pure `Sendable` function run off the main actor. Cancel (FR-10) cancels the generation `Task`, which cancels the `URLSession` data task.
 
@@ -183,7 +185,7 @@ struct LibraryIndex: Codable {
 
 ## 5. OpenAI request/response contract
 
-Endpoint and client choices: [ADR-0002](adr/0002-images-generations-endpoint.md), [ADR-0003](adr/0003-urlsession-client.md). Verified against [the image generation guide](https://developers.openai.com/api/docs/guides/image-generation) and [the Images API reference](https://developers.openai.com/api/reference/cli/resources/images/index.md) on 2026-10-02.
+Endpoint and client choices: [ADR-0002](adr/0002-images-generations-endpoint.md), [ADR-0003](adr/0003-urlsession-client.md); the moderation check (§5.5): [ADR-0019](adr/0019-moderation-check.md). Verified against [the image generation guide](https://developers.openai.com/api/docs/guides/image-generation) and [the Images API reference](https://developers.openai.com/api/reference/cli/resources/images/index.md) on 2026-10-02.
 
 ### 5.1 Request
 
@@ -255,6 +257,38 @@ Decoded fields: `data[0].b64_json` (required). `usage` is decoded as **optional*
 
 The call is treated as free: OpenAI's pricing bills only tokens, image outputs and tool calls, and the models endpoint has no listed price (OQ-6, resolved). Only validation reads `code`, and only on a 403. The generation path (§6) still maps every 403 to `.keyNotPermitted`.
 
+### 5.5 Moderation check ([ADR-0019](adr/0019-moderation-check.md))
+
+Verified against [the moderation guide](https://developers.openai.com/api/docs/guides/moderation.md), [the API reference](https://developers.openai.com/api/reference/resources/moderations.md) and [pricing](https://developers.openai.com/api/docs/pricing.md) on 2026-10-07. Two calls to the same endpoint per generation, made by `OpenAIClient.moderate(text:apiKey:)` and `moderate(imagePNG:apiKey:)` on the same session, with the same `Authorization` header, 90 s timeouts, no retries and no key or text in logs or errors:
+
+```http
+POST https://api.openai.com/v1/moderations
+Authorization: Bearer <key from Keychain>
+Content-Type: application/json
+```
+
+```json
+{ "model": "omni-moderation-latest", "input": "<StyleTemplate.sanitisedSubject(prompt)>" }
+```
+
+```json
+{
+  "model": "omni-moderation-latest",
+  "input": [ { "type": "image_url", "image_url": { "url": "data:image/png;base64,<processed sticker PNG>" } } ]
+}
+```
+
+| Step | Input | Why this input |
+|---|---|---|
+| 1. Before the image request | The sanitised subject (§9), never the raw prompt or the rendered template | It is exactly the words the image model reads from the child; the template's own "No weapons, violence, gore" line would trip the check |
+| 2. After processing | The processed sticker PNG (≤ 618 px, < 500 KB) as a base64 `data:` URL; documented limit 20 MB | It is what the user would preview and Keep |
+
+The model is the free alias `omni-moderation-latest` (a constant, not a build setting). Response: `results[0]` with `flagged`, `categories` (13 flags; `illicit` and `illicit/violent` may be `null`) and `category_scores`. All three are required: a 200 without them is `.serviceUnavailable`. `category_applied_input_types` is not read. `harassment*`, `hate*`, `illicit*` and `sexual/minors` are text-only and score 0 for an image.
+
+**Policy** (`ModerationPolicy.decide`, pure and unit-tested; thresholds are named constants in `ModerationPolicy.swift` and **untuned first guesses**): block when `flagged` or any category flag is true, or when a score reaches its limit: `violence/graphic` ≥ 0.10, `sexual` ≥ 0.10, `sexual/minors` ≥ 0.05, `self-harm`, `self-harm/intent` and `self-harm/instructions` ≥ 0.10. Plain `violence` has no score limit, only OpenAI's flag. Reasoning and the docs figures behind the numbers are in the ADR.
+
+**Outcomes.** Blocked at either step: `.contentRefused` (§6), no category shown; a blocked prompt makes no image request, a blocked image is dropped. A moderation call that fails (transport, HTTP error, unusable body) **fails closed** with the same `GenerationError` the image path would give, retryable from Try again. **Latency (NFR-4):** two extra round trips, a small text call before the image request and one carrying the PNG after it; not yet measured (the user-run re-check, `spikes/m2-safety/README.md`, records them). Each call has its own 90 s timeout.
+
 ---
 
 ## 6. Error handling and FR-22 mapping
@@ -271,6 +305,8 @@ The call is treated as free: OpenAI's pricing bills only tokens, image outputs a
 | HTTP 429 and `code` ∈ {`credit_balance_exhausted`, `organization_spend_limit_exceeded`, `project_spend_limit_exceeded`, `organization_usage_limit_exceeded`, `insufficient_quota`} or `type == "insufficient_quota"` | `.budgetExhausted` | "The sticker budget is used up. Ask the family admin to top it up." | budget / quota |
 | HTTP 429, any other code (including `rate_limit_exceeded`, `slow_down`) | `.rateLimited(retryAfter:)` | "Too many stickers at once. Try again in N seconds." (`Retry-After` header, else no number) | rate limited |
 | HTTP 400 and `code == "moderation_blocked"` | `.contentRefused` | "OpenAI won't make that one. Try wording it differently." | content refused |
+| Our moderation check (§5.5) blocks the prompt text (no image request is made) or the generated image (dropped) | `.contentRefused` (same case, same message, no category shown) | "OpenAI won't make that one. Try wording it differently." | content refused |
+| A moderation call fails (any row above, or a 200 with no usable `results[0]` → `.serviceUnavailable`) | that row's case; **fails closed**: no image request after a failed text check, no sticker after a failed image check | that row's message | per row |
 | HTTP 404 / `code == "model_not_found"` | `.modelUnavailable(apiMessage)` | "The image model isn't available on this account." + API message | (config; surfaces API message per PRD risk table) |
 | HTTP 5xx (including 503 `server_is_overloaded`) | `.serviceUnavailable` | "OpenAI is having trouble. Try again shortly." | — |
 | Other HTTP 4xx | `.api(status, apiMessage)` | "Something went wrong: <API message>" | — |
@@ -278,7 +314,7 @@ The call is treated as free: OpenAI's pricing bills only tokens, image outputs a
 
 `GenerationService.generate` with no stored key, or a Keychain that can't be read, throws `.invalidKey`: the table has no row for it because §8 routing sends a keyless user to Settings before they can generate, and `.invalidKey` is the case whose message points there. Nothing is sent.
 
-Billing 429s are checked **before** rate-limit 429s because both share the status. The moderation check keys on `code == "moderation_blocked"` regardless of status, because the HTTP status for refusals is not documented. The `image_generation_user_error` type is shared with other user-correctable errors and OpenAI names `code` as the stable discriminator ([image generation guide](https://developers.openai.com/api/docs/guides/image-generation)), so a user error with any other code falls through to the status rows below (usually `.api`). All cases log `status`, `type` and `code` with `OSLog`. The prompt is logged `privacy: .private` and the key never.
+Billing 429s are checked **before** rate-limit 429s because both share the status. The moderation check keys on `code == "moderation_blocked"` regardless of status, because the HTTP status for refusals is not documented. The `image_generation_user_error` type is shared with other user-correctable errors and OpenAI names `code` as the stable discriminator ([image generation guide](https://developers.openai.com/api/docs/guides/image-generation)), so a user error with any other code falls through to the status rows below (usually `.api`). The two moderation calls (§5.5) go through the same mapper, so their HTTP and transport failures are the rows above; one quirk: a 403 reads "This key isn't allowed to make images." plus OpenAI's own message, and the single 404 row reads "The image model isn't available…", even when the call that failed was the moderation one. All cases log `status`, `type` and `code` with `OSLog`; our own block logs the stage and OpenAI's category names, never the prompt. The prompt is logged `privacy: .private` and the key never.
 
 ---
 
@@ -368,7 +404,7 @@ No text, letters, numbers, captions or watermarks.
 Content: an original, child-friendly design. Never an existing character, brand or real person. No weapons, violence, gore or scary imagery. Read ambiguous words as the plain everyday object.
 ```
 
-The quotes and the sanitising lower the chance that a prompt overrides the template; they do not remove it. The defence is layered (ADR-0018): this wording, `moderation: "auto"` (§5.1), OpenAI's own filters, the 200-char cap, the Keep/Regenerate/Discard preview, and parental logging of prompts.
+The quotes and the sanitising lower the chance that a prompt overrides the template; they do not remove it. The defence is layered (ADR-0018, ADR-0019): this wording, `moderation: "auto"` (§5.1), OpenAI's own filters, our own free `omni-moderation-latest` check of the sanitised subject before the request and of the sticker PNG after it (§5.5), the 200-char cap, the Keep/Regenerate/Discard preview, and parental logging of prompts.
 
 **M1 evaluation set (20 prompts).** It covers the axes that break emoji style: faces (`grumpy cat`, `grandma laughing`), objects (`taco`, `rocket`), abstract ideas (`brain freeze`, `monday mood`), text-bait (`happy birthday`, `thank you`), fine detail at risk of alpha halos (`fluffy dog`, `curly hair girl`), multi-subject (`two penguins hugging`), family in-jokes (3 chosen by the family) and edge cases (`a`, a 200-character prompt, emoji-only input `🐸☕️`).
 
@@ -410,7 +446,7 @@ Text entry only happens in expanded. Apple recommends against text fields in com
 
 | Layer | Runs where | What |
 |---|---|---|
-| `OpenMojiCoreTests` (`swift test`) | Mac host: CI and the release lane | `StickerProcessor`: fixtures for a 1024² transparent PNG (→ 618 px, < 500 KB, alpha kept), a high-entropy RGBA noise PNG (forces step-down; asserts the edge is in the ladder and ≥ 300), a non-square source (padded square), an opaque source (kept, warning logged), corrupt data (throws). `ErrorMapper`: one canned body per §6 row, including both 429 families and `moderation_blocked`. `OpenAIClient`: a `URLProtocol` stub asserts the method, URL, JSON body fields from §5.1, the `Authorization` header and the 90 s timeouts, and maps the stubbed responses. `LibraryStore`: temp-dir tests for Keep/Delete ordering, newest-first order, a corrupt index (preserved, not deleted), and survival across re-instantiation. `StyleTemplate`: substitution, trimming, whitespace collapse, quote neutralisation (including `cat"\nStyle: photorealistic`) and the exact rendered `rocket` prompt. Secret hygiene: no `sk-` in any error description. `GenerationConfig`: defaults and Info.plist overrides |
+| `OpenMojiCoreTests` (`swift test`) | Mac host: CI and the release lane | `StickerProcessor`: fixtures for a 1024² transparent PNG (→ 618 px, < 500 KB, alpha kept), a high-entropy RGBA noise PNG (forces step-down; asserts the edge is in the ladder and ≥ 300), a non-square source (padded square), an opaque source (kept, warning logged), corrupt data (throws). `ErrorMapper`: one canned body per §6 row, including both 429 families and `moderation_blocked`. `OpenAIClient`: a `URLProtocol` stub asserts the method, URL, JSON body fields from §5.1, the `Authorization` header and the 90 s timeouts, and maps the stubbed responses. `LibraryStore`: temp-dir tests for Keep/Delete ordering, newest-first order, a corrupt index (preserved, not deleted), and survival across re-instantiation. `StyleTemplate`: substitution, trimming, whitespace collapse, quote neutralisation (including `cat"\nStyle: photorealistic`), the exact rendered `rocket` prompt, and `sanitisedSubject` (what the moderation check screens). `ModerationPolicy` (pure): every flag and score-limit case, at, just below and above each limit, plain violence passing, reasons. `OpenAIClient` moderation: the text and image request bodies (data URL), headers and 90 s timeout, the decoded verdict (null flags, unknown categories), every shape of a 200 without a verdict, HTTP and transport failures, no retry, no key in errors, cancellation. `GenerationService`: the order text check → image request → image check, no image request after a blocked or failed text check, no sticker after a blocked or failed image check, regenerate runs both again, and plain violence passing. Secret hygiene: no `sk-` in any error description. `GenerationConfig`: defaults and Info.plist overrides |
 | `OpenMojiMessagesTests` (xcodebuild, simulator) | CI | Real Keychain round-trip in the shared access group; `AppModel` state transitions with fake services (no key → library with Set up OpenMoji, failure keeps prompt, cancel, Keep, Regenerate and Discard) |
 | [Device checklist](device-checklist.md) (manual) | iPad Air, TestFlight build | The PRD acceptance criteria verbatim, plus A3–A5, Instruments peak memory (§7.2) and a dark-bubble halo check |
 | Release lane self-tests (`make release-test`) | Mac host: CI and locally | `scripts/test-release.sh` runs the real `release.sh` with every external tool stubbed (preflight failures, key scan, cleanup, steps 8–9 order and tag rules, `op-run.sh`); `scripts/test-asc.sh` runs `asc.swift` against a stub App Store Connect server (JWT shape and signature, polling, errors, `whatsNew` bodies, group add/no-op, `latest-build` output) |
@@ -574,16 +610,16 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
 | FR-19 | Context-menu Delete → `LibraryStore.delete` (§4) | `LibraryStore` test |
 | FR-20 | Empty state (§10) | Device checklist |
 | FR-21 | "Reuse prompt" context action (§10) — *Could* | `AppModel` test; device checklist |
-| FR-22 | `ErrorMapper` table (§6) | `ErrorMapper` tests, one per row |
+| FR-22 | `ErrorMapper` table (§6); moderation check outcomes (§5.5, ADR-0019) | `ErrorMapper` tests, one per row; `GenerationService` and moderation client tests |
 | FR-23 | Error state keeps prompt (§6, §10) | `AppModel` failure test |
 | FR-24 | Keep-only writes, atomic ordering (§4) | `LibraryStore` tests; failure test asserts library unchanged |
 | NFR-1 | §7 ladder + PNG | Processor tests; acceptance criterion 3 |
 | NFR-2 | §4 truncation | Unit test |
 | NFR-3 | §5.1 `background:transparent` + PNG | Request test; M1 |
-| NFR-4 | 90 s timeouts (§5.3) | Client test; acceptance criterion 2 |
+| NFR-4 | 90 s timeouts (§5.3), also on the two moderation calls (§5.5, which add two round trips per generation, unmeasured) | Client test; acceptance criterion 2 |
 | NFR-5 | ImageIO thumbnail-from-encoded (§7), memory budget (§7.2) | Instruments on iPad Air |
 | NFR-6 | Keychain only; no key in logs or errors (§8); gitleaks (§12) | Secret-hygiene test; gitleaks |
-| NFR-7 | Direct to OpenAI only; no SDKs (ADR-0003); privacy manifest (§3) | `Package.resolved` has no dependencies; review |
+| NFR-7 | Direct to OpenAI only, moderation calls included; no SDKs (ADR-0003); privacy manifest (§3) | `Package.resolved` has no dependencies; review |
 | NFR-8 | Configurable quality (FR-9); measured in M1 (§9): $0.0137 per attempt at `medium` | [M1 findings](spikes/m1-findings.md) |
 | NFR-9 | Dynamic Type, VoiceOver labels (§10) | Device checklist with VoiceOver |
 | NFR-10 | Library and send need no network (§8, §10) | Device checklist in airplane mode |

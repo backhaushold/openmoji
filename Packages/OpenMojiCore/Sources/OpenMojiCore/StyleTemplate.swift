@@ -27,6 +27,20 @@ public enum StyleTemplate {
     /// Inserts the user prompt into the style template.
     ///
     /// - Parameters:
+    ///   - userPrompt: The user's text input, reduced to the subject that is
+    ///     inserted by `sanitisedSubject(_:)`.
+    /// - Returns: The complete prompt template with `{subject}` replaced
+    ///   by the sanitised, capped prompt.
+    public static func render(_ userPrompt: String) -> String {
+        template.replacingOccurrences(of: "{subject}", with: sanitisedSubject(userPrompt))
+    }
+
+    /// The text of `userPrompt` that goes into `{subject}`: the exact words the
+    /// image model reads from the user. The moderation check (ADR-0019) screens
+    /// this, not the raw prompt and not the whole template, whose own "No
+    /// weapons, violence, gore" line would trip it.
+    ///
+    /// - Parameters:
     ///   - userPrompt: The user's text input. Whitespace and newlines are
     ///     trimmed from both ends and every interior run of them becomes one
     ///     space, so the prompt can't add lines that look like template
@@ -35,16 +49,13 @@ public enum StyleTemplate {
     ///     `Character`s (extended grapheme clusters). The quote swap is
     ///     one-for-one, so the cap counts the same before or after it, and a
     ///     prompt that `AppModel` already limited to 200 only ever shrinks.
-    /// - Returns: The complete prompt template with `{subject}` replaced
-    ///   by the sanitised, capped prompt.
-    public static func render(_ userPrompt: String) -> String {
+    public static func sanitisedSubject(_ userPrompt: String) -> String {
         let oneLine = userPrompt
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
         let scalars = oneLine.unicodeScalars.map { doubleQuotes.contains($0) ? "'" : $0 }
         let neutralised = String(String.UnicodeScalarView(scalars))
-        let capped = String(neutralised.prefix(200))
-        return template.replacingOccurrences(of: "{subject}", with: capped)
+        return String(neutralised.prefix(200))
     }
 }
