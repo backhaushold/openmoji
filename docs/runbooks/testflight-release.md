@@ -604,9 +604,9 @@ number and App Store Connect rejects it as a duplicate; land a new commit
 first. No export compliance prompt is expected; the build declares
 HTTPS-only encryption ([§3](../tech-spec.md#3-targets-modules-and-entitlements)).
 
-`make release-test` (`scripts/test-release.sh`, then `scripts/test-asc.sh`)
-exercises the lane scripts with every external tool stubbed: each preflight
-failure, the `sk-` scan, cleanup of the temporary key and the keychain search
+`make release-test` (`scripts/test-release.sh`, `scripts/test-asc.sh`, then
+`scripts/test-inactivity-guard.sh`) exercises the lane scripts with every
+external tool stubbed: each preflight failure, the `sk-` scan, cleanup of the temporary key and the keychain search
 list on success, failure and signals, and steps 8 and 9 (the order of the
 `asc.swift` calls, the What to Test text, and that the `build-<N>` tag is
 annotated and pushed only after the build is VALID, never on INVALID, a
@@ -614,8 +614,11 @@ timeout or a failed step). It also covers `op-run.sh`'s two auth modes with a
 stub `op` and a fake token in a fixture directory (never your real `.env`), and
 `make testflight-status`. `test-asc.sh` runs `asc.swift` itself against a local
 stub HTTP server on 127.0.0.1 with a throwaway key (JWT header, claims and
-signature, polling, error handling, the What to Test and group requests). None of
-it signs, uploads or calls App Store Connect; run it after editing the scripts.
+signature, polling, error handling, the What to Test and group requests).
+`test-inactivity-guard.sh` runs `inactivity-guard.sh` with a stub `gh` (the
+threshold and its override, one issue at a time, the label, bad input). None of
+it signs, uploads or calls App Store Connect or GitHub; run it after editing the
+scripts.
 
 ### Reading `make testflight-status`
 
@@ -633,6 +636,42 @@ revoked or lacks App Manager (2.5).
 About two weeks before a build's 90 days are up, the scheduled workflow opens a
 GitHub issue labelled `testflight-expiry`. Run `make testflight-status` to see
 the exact date, then run `make testflight` again.
+
+### If the repository-inactivity warning opens
+
+That alert is itself a scheduled workflow, and GitHub disables scheduled
+workflows in a **public** repository after 60 days without repository activity
+([Events that trigger workflows, "schedule"](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule);
+[Disabling and enabling a workflow](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows)).
+Private repositories are not subject to this rule. This repo is public. GitHub
+does not say exactly what counts as activity, so the guard watches the one thing
+you control: the committer date of the latest commit on the default branch.
+
+The same daily workflow (`testflight-expiry`, step "Check repository
+inactivity", `scripts/inactivity-guard.sh`) opens a GitHub issue labelled
+`workflow-inactivity` once that commit is 50 days old (`inactivity_days` on a
+manual run; `INACTIVITY_DAYS` in the script), which leaves about ten days. It
+opens at most one at a time and nothing commits on your behalf. The issue is
+titled "No commits to main for N days; GitHub disables scheduled workflows at
+60". What to do:
+
+1. Push a commit to `main`: merge any small change through a pull request. The
+   next daily run sees the new commit and stays quiet.
+2. Close the issue. If you close it with no new commit, the next run opens a
+   fresh one.
+3. If the issue arrived late, or the Actions tab shows `TestFlight expiry` as
+   disabled (`gh workflow list --all`), re-enable it:
+
+   ```bash
+   gh workflow enable testflight-expiry.yml
+   ```
+
+   then push a commit as in step 1. The docs do not say whether re-enabling
+   counts as repository activity, so do not rely on it alone.
+
+A disabled workflow raises no alert of its own, so this issue is the only
+warning. While the schedule is off, `make testflight-status` still shows the
+newest build's exact expiry.
 
 ### If the lane fails after the upload
 

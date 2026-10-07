@@ -4,6 +4,12 @@
 # no Actions secrets: only the per-run GITHUB_TOKEN (contents read, issues
 # write). The logic lives in scripts/testflight-expiry.sh so it can be tested
 # offline.
+#
+# GitHub disables scheduled workflows in a public repository after 60 days
+# without repository activity, which would silence this alert. A second step
+# (scripts/inactivity-guard.sh) opens a warning issue once the default branch's
+# latest commit is 50 days old, so a person can push a commit in time. It makes
+# no commits itself.
 name: TestFlight expiry
 
 on:
@@ -15,6 +21,10 @@ on:
         description: Alert if the newest build expires within this many days
         type: string
         default: "14"
+      inactivity_days:
+        description: Warn if the default branch's latest commit is this many days old
+        type: string
+        default: "50"
 
 permissions:
   contents: read
@@ -49,3 +59,14 @@ jobs:
           # Empty on schedule runs; the script then uses its default of 14.
           THRESHOLD_DAYS: ${{ inputs.threshold_days }}
         run: scripts/testflight-expiry.sh
+
+      # Runs even if the step above failed, so a problem in one check does not
+      # hide the other.
+      - name: Check repository inactivity
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          # Empty on schedule runs; the script then uses its default of 50.
+          INACTIVITY_DAYS: ${{ inputs.inactivity_days }}
+        run: scripts/inactivity-guard.sh
