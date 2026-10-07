@@ -27,7 +27,7 @@ An iPad-only iMessage app extension that turns a text prompt into an emoji-style
 | `MessagesExtension/` | `OpenMojiMessages`, the iMessage extension: `MessagesViewController`, SwiftUI views, UI-free `Model/` |
 | `MessagesExtensionTests/` | `OpenMojiMessagesTests`, the simulator test bundle (Keychain round trip, view-model tests) |
 | `Packages/OpenMojiCore/` | Local Swift package with all logic and its tests (`swift test`) |
-| `scripts/` | Release lane: `release.sh`, `op-run.sh`, `asc.swift`, their self-tests, `testflight-expiry.sh`, `inactivity-guard.sh` and its test. Icons: `make-icons.swift` and its test `test-make-icons.sh` |
+| `scripts/` | Release lane: `release.sh`, `op-run.sh`, `asc.swift`, their self-tests, `testflight-expiry.sh`, `inactivity-guard.sh` and their tests. Icons: `make-icons.swift` and its test `test-make-icons.sh` |
 | `release/` | `ExportOptions.plist` and `.env.example` (1Password `op://` references, no values) |
 | `Makefile` | Release lane entry points (`testflight`, `testflight-status`, `op-check`, `release-test`) |
 | `.github/workflows/` | `ci.yml` (verify) and `testflight-expiry.yml` (expiry alert) |
