@@ -27,7 +27,7 @@ An iPad-only iMessage app extension that turns a text prompt into an emoji-style
 | `MessagesExtension/` | `OpenMojiMessages`, the iMessage extension: `MessagesViewController`, SwiftUI views, UI-free `Model/` |
 | `MessagesExtensionTests/` | `OpenMojiMessagesTests`, the simulator test bundle (Keychain round trip, view-model tests) |
 | `Packages/OpenMojiCore/` | Local Swift package with all logic and its tests (`swift test`) |
-| `scripts/` | Release lane: `release.sh`, `op-run.sh`, `asc.swift`, their self-tests, `testflight-expiry.sh`. Icons: `make-icons.swift` and its test `test-make-icons.sh` |
+| `scripts/` | Release lane: `release.sh`, `op-run.sh`, `asc.swift`, their self-tests, `testflight-expiry.sh`, `inactivity-guard.sh` and its test. Icons: `make-icons.swift` and its test `test-make-icons.sh` |
 | `release/` | `ExportOptions.plist` and `.env.example` (1Password `op://` references, no values) |
 | `Makefile` | Release lane entry points (`testflight`, `testflight-status`, `op-check`, `release-test`) |
 | `.github/workflows/` | `ci.yml` (verify) and `testflight-expiry.yml` (expiry alert) |
@@ -73,7 +73,7 @@ You can also open the generated `OpenMoji.xcodeproj` in Xcode and run the `OpenM
 
 `.github/workflows/ci.yml` runs on every pull request and every push to `main`, on `macos-latest`, and only verifies: gitleaks over the full history, SwiftFormat and SwiftLint (pull requests), `shellcheck`, `make release-test`, `swift test`, then `xcodegen generate` and the simulator tests. Changes that touch only docs (`docs/`, `*.md`, `.gitignore`, `.claude/`) run just gitleaks. CI never signs or uploads, and the repo has **no GitHub Actions secrets**: the workflows use only the built-in `GITHUB_TOKEN`.
 
-`.github/workflows/testflight-expiry.yml` runs daily and opens a GitHub issue when the newest TestFlight build (TestFlight builds last 90 days) is about two weeks from expiring. It works from the date of the `build-N` tag the release lane pushes, so it needs no App Store Connect access.
+`.github/workflows/testflight-expiry.yml` runs daily and opens a GitHub issue when the newest TestFlight build (TestFlight builds last 90 days) is about two weeks from expiring. It works from the date of the `build-N` tag the release lane pushes, so it needs no App Store Connect access. GitHub disables scheduled workflows in a public repository after 60 days without activity, so the same workflow also opens an issue labelled `workflow-inactivity` once the latest commit on `main` is 50 days old (push a commit, or `gh workflow enable testflight-expiry.yml`). See the runbook, section 4.
 
 ## Icons
 
