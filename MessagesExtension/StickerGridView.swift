@@ -44,7 +44,16 @@ struct StickerGridView: View {
                                         Label("Delete", systemImage: "trash")
                                     }
                                 } preview: {
-                                    StickerPromptPreview(sticker: sticker, url: model.fileURL(for: sticker))
+                                    // The prompt in full (up to 200 characters, FR-6; the
+                                    // 150-scalar cut is only for VoiceOver), above the sticker.
+                                    // Text styles only, so it follows Dynamic Type.
+                                    VStack(spacing: 12) {
+                                        Text(sticker.prompt).multilineTextAlignment(.center)
+                                        StickerCell(sticker: sticker, url: model.fileURL(for: sticker))
+                                            .aspectRatio(1, contentMode: .fit)
+                                    }
+                                    .padding()
+                                    .frame(width: 280)
                                 }
                         }
                     }
@@ -65,25 +74,5 @@ struct StickerGridView: View {
         .task {
             await model.reloadLibrary()
         }
-    }
-}
-
-/// What the context menu lifts for a sticker: the prompt it was made from, in
-/// full (up to 200 characters, FR-6; the 150-scalar cut is only for VoiceOver),
-/// above the sticker. Text styles only, so it follows Dynamic Type.
-private struct StickerPromptPreview: View {
-    let sticker: Sticker
-    let url: URL
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text(sticker.prompt)
-                .font(.body)
-                .multilineTextAlignment(.center)
-            StickerCell(sticker: sticker, url: url)
-                .aspectRatio(1, contentMode: .fit)
-        }
-        .padding()
-        .frame(width: 280)
     }
 }
