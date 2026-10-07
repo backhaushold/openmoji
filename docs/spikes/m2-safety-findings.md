@@ -90,4 +90,4 @@ Same outline weight, palette, shading and framing on every pair; differences are
 
 ## Decision
 
-The user adopted these scores and filed the moderation pre-check (openmoji-6dr.8) on 2026-10-07. The drift meets the proposed bar, so the recommendation is to keep ADR-0018 as shipped (the user's call; option B was not tested). The template is a style and intent hint, not a safety boundary: blocking gore needs a check that can refuse a prompt (openmoji-6dr.8), plus parental review (openmoji-6dr.4).
+The user adopted these scores and filed the moderation pre-check (openmoji-6dr.8) on 2026-10-07. The drift meets the proposed bar, and the user chose to keep ADR-0018 as shipped (2026-10-07; option B was not tested). The template is a style and intent hint, not a safety boundary: blocking gore needs a check that can refuse a prompt (openmoji-6dr.8), plus parental review (openmoji-6dr.4).
