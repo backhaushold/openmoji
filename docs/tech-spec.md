@@ -270,7 +270,7 @@ The call is treated as free: OpenAI's pricing bills only tokens, image outputs a
 | HTTP 403 | `.keyNotPermitted(apiMessage)` | "This key isn't allowed to make images." + API message | invalid key |
 | HTTP 429 and `code` ∈ {`credit_balance_exhausted`, `organization_spend_limit_exceeded`, `project_spend_limit_exceeded`, `organization_usage_limit_exceeded`, `insufficient_quota`} or `type == "insufficient_quota"` | `.budgetExhausted` | "The sticker budget is used up. Ask the family admin to top it up." | budget / quota |
 | HTTP 429, any other code (including `rate_limit_exceeded`, `slow_down`) | `.rateLimited(retryAfter:)` | "Too many stickers at once. Try again in N seconds." (`Retry-After` header, else no number) | rate limited |
-| HTTP 400 and `code == "moderation_blocked"` or `type == "image_generation_user_error"` | `.contentRefused` | "OpenAI won't make that one. Try wording it differently." | content refused |
+| HTTP 400 and `code == "moderation_blocked"` | `.contentRefused` | "OpenAI won't make that one. Try wording it differently." | content refused |
 | HTTP 404 / `code == "model_not_found"` | `.modelUnavailable(apiMessage)` | "The image model isn't available on this account." + API message | (config; surfaces API message per PRD risk table) |
 | HTTP 5xx (including 503 `server_is_overloaded`) | `.serviceUnavailable` | "OpenAI is having trouble. Try again shortly." | — |
 | Other HTTP 4xx | `.api(status, apiMessage)` | "Something went wrong: <API message>" | — |
@@ -278,7 +278,7 @@ The call is treated as free: OpenAI's pricing bills only tokens, image outputs a
 
 `GenerationService.generate` with no stored key, or a Keychain that can't be read, throws `.invalidKey`: the table has no row for it because §8 routing sends a keyless user to Settings before they can generate, and `.invalidKey` is the case whose message points there. Nothing is sent.
 
-Billing 429s are checked **before** rate-limit 429s because both share the status. The moderation check uses `code` first; the HTTP status for refusals is not documented, so the mapper keys on `type`/`code` regardless of status. All cases log `status`, `type` and `code` with `OSLog`. The prompt is logged `privacy: .private` and the key never.
+Billing 429s are checked **before** rate-limit 429s because both share the status. The moderation check keys on `code == "moderation_blocked"` regardless of status, because the HTTP status for refusals is not documented. The `image_generation_user_error` type is shared with other user-correctable errors and OpenAI names `code` as the stable discriminator ([image generation guide](https://developers.openai.com/api/docs/guides/image-generation)), so a user error with any other code falls through to the status rows below (usually `.api`). All cases log `status`, `type` and `code` with `OSLog`. The prompt is logged `privacy: .private` and the key never.
 
 ---
 

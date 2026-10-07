@@ -78,8 +78,10 @@ public enum ErrorMapper {
             break
         }
 
-        // The refusal status is undocumented, so type/code decide.
-        if fields.code == "moderation_blocked" || fields.type == "image_generation_user_error" {
+        // The refusal status is undocumented, so the code decides. The type
+        // `image_generation_user_error` is shared with other user-correctable
+        // errors; OpenAI names `code` as the discriminator.
+        if fields.code == "moderation_blocked" {
             return .contentRefused
         }
         if status == 404 || fields.code == "model_not_found" {
