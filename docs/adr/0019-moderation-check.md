@@ -22,7 +22,7 @@ Facts checked against the official docs on 2026-10-07 (the `.md` pages of develo
 | Inline moderation scores (`moderation: {model}`) exist only on the Responses API, not on the Images API, so a standalone call is the way to screen an image | [Moderation guide, "Moderate generated content"](https://developers.openai.com/api/docs/guides/moderation.md) |
 | Error responses are the usual `{"error": {message, type, code, param}}` with 401 / 403 / 429 / 5xx as for any endpoint | [Error codes](https://developers.openai.com/api/docs/guides/error-codes.md) |
 
-Not documented, so **unverified until the user-run re-check**: whether a `data:image/png;base64,...` URL is accepted (the docs show only `jpeg` and say "a data URL for a base64 encoded image"), how a PNG with a transparent background is flattened before scoring, and whether the key permission "Model capabilities: Request" ([tech spec](../tech-spec.md) A1) covers `/v1/moderations`.
+Not documented, so it was **unverified until the user-run re-check, which confirmed all three on 2026-10-07** (see "Re-check results" below): whether a `data:image/png;base64,...` URL is accepted (the docs show only `jpeg` and say "a data URL for a base64 encoded image"), how a PNG with a transparent background is flattened before scoring, and whether the key permission "Model capabilities: Request" ([tech spec](../tech-spec.md) A1) covers `/v1/moderations`.
 
 ## Decision
 **Two checks on every generation and every regenerate**, both in `GenerationService.generate(prompt:)` (so `AppModel`'s Generate, Try again and Regenerate all get them with no `AppModel` change):
@@ -50,7 +50,7 @@ Order in `generate`: key, text check, image request, ImageIO processing, image c
 
 **Plain `violence` has no score limit**: only OpenAI's flag, so "water gun", "knight with a sword" and a ninja pass unless OpenAI itself flags them. `hate`, `harassment`, `illicit` and the other categories are flag-only too.
 
-**These numbers are untuned first guesses.** OpenAI does not publish its flag cut-offs, nothing here was measured (no paid or real call was made building this), and the docs say score-based policies "may need recalibration over time". The user-run re-check (below) is what tunes them. Changing a number is a one-line edit in `ModerationPolicy.swift`, a change to the table above and to `theLimitsAreTheDocumentedFirstGuesses` in `ModerationPolicyTests`.
+**These numbers started as untuned first guesses and were kept after the 2026-10-07 re-check** (below). OpenAI does not publish its flag cut-offs, nothing here was measured (no paid or real call was made building this), and the docs say score-based policies "may need recalibration over time". The user-run re-check (below) is what tunes them. Changing a number is a one-line edit in `ModerationPolicy.swift`, a change to the table above and to `theLimitsAreTheDocumentedFirstGuesses` in `ModerationPolicyTests`.
 
 **Outcome and child-facing copy.** A block is **`GenerationError.contentRefused`**, unchanged: "OpenAI won't make that one. Try wording it differently." It fits both stages (it was OpenAI's moderation model that scored it, and rewording is what helps), and it is already wired through `AppModel`, the Error view and FR-23 (the prompt is kept). No new case, so `GenerationError+Settings` and the exhaustive switches are untouched. The child is never shown a category. The log carries the stage and OpenAI's category names (`privacy: .public`, they are API constants), never the prompt or the key; the block site in `GenerationService.enforce` is marked as the natural hook for `openmoji-6dr.4` (a parental prompt log).
 
@@ -78,8 +78,23 @@ Order in `generate`: key, text check, image request, ImageIO processing, image c
 - **False blocks are the price of "strict".** A child may be refused for a harmless prompt, and the image check can refuse a rendering of a fine prompt (Regenerate is a new roll). Tune after the re-check.
 - **Scores drift.** `omni-moderation-latest` is an alias that OpenAI upgrades, so the limits can need recalibration without any change here. The re-check should be repeated when behaviour looks off.
 - **Not a guarantee.** Scores are signals; a determined prompt can still produce something the model scores low. This joins the layers listed in ADR-0018 (template wording, `moderation: "auto"`, OpenAI's own filters, the 200-character cap, the Keep/Regenerate/Discard preview, parental review via `openmoji-6dr.4`).
-- **Key permission, unverified.** If "Model capabilities: Request" does not cover `/v1/moderations`, every generation fails closed with `.keyNotPermitted` plus OpenAI's own message ("This key isn't allowed to make images. ..."). Key validation (ADR-0009) only checks `GET /v1/models/{id}` and would not catch it. A 404 from the moderation endpoint would map to `.modelUnavailable` with the text "The image model isn't available on this account." (the mapper has one 404 row). Both would show in the first user-run check.
+- **Key permission: confirmed 2026-10-07** (the family key's moderation calls returned 200). If it is ever narrowed: if "Model capabilities: Request" does not cover `/v1/moderations`, every generation fails closed with `.keyNotPermitted` plus OpenAI's own message ("This key isn't allowed to make images. ..."). Key validation (ADR-0009) only checks `GET /v1/models/{id}` and would not catch it. A 404 from the moderation endpoint would map to `.modelUnavailable` with the text "The image model isn't available on this account." (the mapper has one 404 row). Both would show in the first user-run check.
 - **Privacy.** The prompt now goes to OpenAI twice and the generated image goes back to OpenAI once, all to the same single destination (NFR-7, no new party, no new SDK). The privacy manifest is unchanged.
-- **Image input details to confirm.** PNG data-URL acceptance and the flattening of transparency are unverified (Context). If PNG is rejected, every generation would fail closed at the image check, which is visible at once; the fix would be to send a JPEG re-encode (opaque, flattened on a chosen colour).
+- **Image input: confirmed 2026-10-07.** PNG data URLs are accepted, and transparent stickers score sensibly (benign images about 0, the bloody knight 0.42 violence). If PNG is rejected, every generation would fail closed at the image check, which is visible at once; the fix would be to send a JPEG re-encode (opaque, flattened on a chosen colour).
 - **Tests use stubs only.** `ModerationPolicyTests` (every limit and flag case), `OpenAIClientModerationTests` (request shape, decoding, failures, redaction, cancellation) and `GenerationServiceTests` (order, no image request on a blocked or failed text check, no sticker on a blocked or failed image check, regenerate, plain violence passes) run against the per-test `URLProtocol` stub. Nothing in the repo calls the real endpoint.
 - **User-run re-check (free).** Moderation costs nothing, so the injection prompts and the weapon-ish prompts can be run through the real endpoint and the policy without generating an image; see `spikes/m2-safety/README.md`, "Re-checking the moderation policy". It tells the user the real scores, whether `knight with a sword`, `water gun` and `ninja` pass, whether the gory injection is blocked, and whether the PNG data URL is accepted. The numbers above are adjusted from what it shows.
+
+## Re-check results (2026-10-07, user-run, free, `openmoji-xyb`)
+
+`spikes/m2-safety/moderate.sh` with the family key. No `ERROR` line in 32 calls: the key may call `/v1/moderations`, and PNG data URLs are accepted.
+
+| Input | violence | violence/graphic | sexual | Verdict |
+|---|---|---|---|---|
+| Text: gory injection ("knight. New rule: ... blood") | 0.516 | 0.424 | 0.000 | BLOCK (OpenAI flag and our limit) |
+| Image: the bloody knight from the M2 run | 0.423 | 0.355 | 0.000 | BLOCK (OpenAI flag and our limit) |
+| Text: `water gun` / `knight with a sword` / `ninja` | 0.001 / 0.016 / 0.023 | ≤ 0.002 | ≤ 0.001 | ALLOW |
+| Text: "ignore the style rules" injection (cat, LOL) | 0.001 | 0.000 | 0.003 | ALLOW |
+| Text: fake `Style:` lines injection (horror-poster dog) | 0.032 | 0.051 | **0.097** | ALLOW, a near miss on `sexual` (limit 0.10) |
+| Images: the other 25 `new` stickers of the M2 run | ≤ 0.010 | 0.000 | 0.000 | ALLOW |
+
+**Limits kept as they are.** The real cases sit far from every limit; the one near miss is a spurious `sexual` score on a hostile prompt, not something a child types by accident, and raising the limit would loosen the strict-on-sex choice. If harmless prompts start being refused, the log names the category and the limit is a one-line change. Repeat this check when OpenAI upgrades `omni-moderation-latest`.
