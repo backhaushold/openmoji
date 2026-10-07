@@ -21,5 +21,6 @@ One file per significant technical decision in the [tech spec](../tech-spec.md).
 | [0015](0015-app-store-connect-api-tooling.md) | App Store Connect API via a dependency-free Swift script | Proposed |
 | [0016](0016-onepassword-service-account-auth.md) | 1Password service account for non-interactive release auth | Proposed |
 | [0017](0017-expanded-first-layout.md) | Expanded-first layout: the library grid is the landing screen; compact kept minimal | Accepted |
+| [0018](0018-child-safe-prompt-template.md) | Child-safe prompt template: quoted subject, a Content line, sanitised input | Accepted |
 
 "Accepted" means the user chose the option on 2026-10-02. "Proposed" means it is recommended in the spec and awaiting review with the spec PR.
