@@ -83,6 +83,7 @@ labels `m1`–`m5`), not here.
   CI verifies and alerts but never signs or uploads. **No GitHub Actions secrets**; workflows use only `GITHUB_TOKEN`.
 - No third-party SDKs or package dependencies (NFR-7); OpenAI calls go through our own `URLSession` client.
 - The OpenAI API key lives only in the Keychain: never log it, put it in errors, or commit it.
+  Fake keys in tests use the masked form OpenAI echoes (`sk-proj-abcdef****wxyz`); an unmasked fake fails gitleaks.
 - Verify OpenAI/Apple API details against official docs, not memory — the PRD already had stale model facts.
 - Open questions are `decision` beads (label `open-question`). Resolving one means: `bd close <id> --reason "Ratified: ..."`,
   mark it resolved in `docs/open-questions.md`, fix any tech-spec text that says it's open, and update the PRD's line for it.
