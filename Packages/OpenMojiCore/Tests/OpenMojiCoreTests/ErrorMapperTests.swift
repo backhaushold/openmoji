@@ -199,14 +199,18 @@ import Testing
         #expect(map(400, type: "invalid_request_error", code: "moderation_blocked") == .contentRefused)
     }
 
-    @Test func imageGenerationUserErrorTypeAloneIsContentRefused() {
-        #expect(map(400, type: "image_generation_user_error", code: nil) == .contentRefused)
+    @Test func otherImageGenerationUserErrorsAreNotContentRefused() {
+        // The type is shared with user errors that aren't refusals (bad
+        // parameters, say), so only `moderation_blocked` is a refusal.
+        #expect(map(400, type: "image_generation_user_error", code: "invalid_value") == .api(status: 400, apiMessage: "msg"))
+        #expect(map(400, type: "image_generation_user_error", code: nil) == .api(status: 400, apiMessage: "msg"))
+        #expect(map(500, type: "image_generation_user_error") == .serviceUnavailable)
     }
 
     @Test func contentRefusedMatchesRegardlessOfStatus() {
-        // The refusal status is undocumented, so type/code decide, not 400.
+        // The refusal status is undocumented, so the code decides, not 400.
         #expect(map(422, code: "moderation_blocked") == .contentRefused)
-        #expect(map(500, type: "image_generation_user_error") == .contentRefused)
+        #expect(map(500, code: "moderation_blocked") == .contentRefused)
     }
 
     // MARK: Row 9: model unavailable
