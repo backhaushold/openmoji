@@ -91,3 +91,7 @@ Same outline weight, palette, shading and framing on every pair; differences are
 ## Decision
 
 The user adopted these scores and filed the moderation pre-check (openmoji-6dr.8) on 2026-10-07. The drift meets the proposed bar, and the user chose to keep ADR-0018 as shipped (2026-10-07; option B was not tested). The template is a style and intent hint, not a safety boundary: blocking gore needs a check that can refuse a prompt (openmoji-6dr.8), plus parental review (openmoji-6dr.4).
+
+## Moderation re-check (2026-10-07)
+
+The follow-up moderation check (openmoji-6dr.8, ADR-0019) was re-checked with the real key at no cost (openmoji-xyb). It blocks the gory injection both as text (violence/graphic 0.42) and as the generated image (0.36), and lets `water gun`, `knight with a sword` and `ninja` through. Full scores are in [ADR-0019](../adr/0019-moderation-check.md#re-check-results-2026-10-07-user-run-free-openmoji-xyb).
