@@ -7,8 +7,10 @@ import SwiftUI
 /// (`CompactHomeView`). It reads the library when it appears; whatever changes
 /// the library later calls `AppModel.reloadLibrary()`.
 ///
-/// Touch-and-hold on a cell opens a context menu with Delete (FR-19), and shows
-/// the sticker's whole prompt above it, since the cell has no room for it.
+/// Touch-and-hold on a cell opens a context menu with Reuse prompt (FR-21),
+/// which opens Compose with the sticker's prompt in the field, and Delete
+/// (FR-19), and shows the sticker's whole prompt above it, since the cell has
+/// no room for it. With no key the menu has Delete only.
 ///
 /// With no stickers it shows the empty state (FR-20), which points at the
 /// button the caller puts under the grid, once a read has succeeded; if the
@@ -36,6 +38,13 @@ struct StickerGridView: View {
                             StickerCell(sticker: sticker, url: model.fileURL(for: sticker))
                                 .aspectRatio(1, contentMode: .fit)
                                 .contextMenu {
+                                    // With no key there is no Compose to open, so no Reuse
+                                    // prompt, as "Set up OpenMoji" replaces "New sticker" (NFR-10).
+                                    if !needsSetUp {
+                                        Button { model.reusePrompt(of: sticker) } label: {
+                                            Label("Reuse prompt", systemImage: "square.and.pencil")
+                                        }
+                                    }
                                     // No confirmation: the spec asks for none. Hold opens the
                                     // menu and a drag still peels the sticker (OQ-10, ADR-0008).
                                     Button(role: .destructive) {

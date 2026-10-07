@@ -223,6 +223,19 @@ final class AppModel {
         if presentationStyle != .expanded { requestExpandedStyle() }
     }
 
+    /// The library cell's "Reuse prompt" (FR-21): puts `sticker`'s prompt in the
+    /// draft, replacing what was there, and opens Compose as "New sticker" does
+    /// (so compact asks the host to expand). Compose and `PromptField` read the
+    /// draft when they appear, so the prompt shows in the field, editable and
+    /// within the limit, since stored prompts already fit (FR-6). Only from the
+    /// library (idle): with no key the library offers "Set up OpenMoji" instead
+    /// (NFR-10), and the other states own the draft.
+    func reusePrompt(of sticker: Sticker) {
+        guard state == .idle else { return }
+        prompt = sticker.prompt
+        startNewSticker()
+    }
+
     /// Compose's back button: returns to the library with the prompt kept.
     /// Only from the prompt itself; the other screens have their own exits.
     func closeCompose() {

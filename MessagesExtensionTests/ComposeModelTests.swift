@@ -278,3 +278,45 @@ struct NewStickerTests {
         #expect(model.prompt == "a cat")
     }
 }
+
+/// FR-21: "Reuse prompt" on a library cell opens Compose with that sticker's
+/// prompt as the draft, to edit and generate from.
+@MainActor
+struct ReusePromptTests {
+    @Test func opensComposeWithTheStickersPromptReplacingTheDraft() {
+        let model = makeModel(prompt: "half typed")
+        model.presentationStyle = .expanded
+        #expect(model.route == .library)
+
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        #expect(model.route == .compose)
+        #expect(model.prompt == "grumpy cat")
+        #expect(model.canGenerate)
+    }
+
+    @Test func withNoKeyItDoesNothing() {
+        let model = makeModel(key: nil, prompt: "a cat")
+        model.presentationStyle = .expanded
+        #expect(model.route == .librarySetUp)
+
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        #expect(model.route == .librarySetUp)
+        #expect(model.prompt == "a cat")
+    }
+
+    @Test func inPreviewItLeavesTheDraftAlone() async {
+        let generator = FakeGenerator()
+        await generator.enqueue(.success(makeProcessedSticker()), for: "a cat")
+        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator, library: FakeLibrary())
+        model.prompt = "a cat"
+        model.generate()
+        if case .generating(let task) = model.state { await task.value }
+        guard case .preview = model.state else {
+            Issue.record("expected preview, got \(model.state)")
+            return
+        }
+
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        #expect(model.prompt == "a cat")
+    }
+}
