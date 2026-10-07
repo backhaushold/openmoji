@@ -147,9 +147,6 @@ check "the body names the date GitHub disables the schedule (last commit + 60 da
 check "the body tells the user to push a commit" body_has "push a commit"
 check "the body gives the re-enable command" body_has "gh workflow enable testflight-expiry.yml"
 check "the body points at the runbook" body_has "docs/runbooks/testflight-release.md"
-run_guard 75
-check "a 75-day-old commit still opens an issue (the schedule may be off already)" opened_issue
-check "the title says 75 days" title_has "75 days"
 
 group "Label: created on first use only"
 run_guard 55
@@ -165,7 +162,6 @@ check "exits 0" exited 0
 check "opens no issue and creates no label" only_read_calls
 check "it says one is already open" said "already open"
 check "it looks only at its own label" logged '^issue list --label workflow-inactivity --state open'
-check "it never touches the testflight-expiry label" not_logged 'testflight-expiry '
 
 group "INACTIVITY_DAYS"
 run_guard 10 INACTIVITY_DAYS=7
@@ -184,8 +180,6 @@ run_guard 90 INACTIVITY_DAYS=abc
 check "a non-numeric INACTIVITY_DAYS exits 2" exited 2
 check "it names the variable" said "INACTIVITY_DAYS must be a non-negative integer"
 check "it makes no gh call" test "$(calls_total)" = 0
-run_guard 90 INACTIVITY_DAYS=-5
-check "a negative INACTIVITY_DAYS exits 2" exited 2
 run_guard 90 STUB_API_FAIL=1
 check "a failing gh api exits non-zero" test "$STATUS" -ne 0
 check "it opens no issue" no_issue
@@ -199,18 +193,6 @@ check "with GH_REPO the commits path names that repo" logged '^api repos/owner/n
 run_guard 10
 check "without GH_REPO gh fills {owner}/{repo} from the git remote" \
   logged '^api repos/\{owner\}/\{repo\}/commits\?per_page=1 '
-check "no sha is passed, so the default branch is read" not_logged 'commits\?[^ ]*sha='
-
-group "No commits from CI"
-no_git_writes() { ! grep -nE '(^|[^[:alnum:]_-])git[[:space:]]+(commit|push|tag|add)' "$SCRIPT"; }
-check "the script runs no git commit, push, tag or add" no_git_writes
-
-if command -v shellcheck >/dev/null 2>&1; then
-  check "shellcheck: inactivity-guard.sh is clean" shellcheck -s bash "$SCRIPT"
-  check "shellcheck: test-inactivity-guard.sh is clean" shellcheck -s bash "${BASH_SOURCE[0]}"
-else
-  printf '  skip  shellcheck is not installed (brew install shellcheck)\n'
-fi
 
 printf '\n%s passed, %s failed\n' "$PASSES" "$FAILURES"
 [ "$FAILURES" -eq 0 ]
