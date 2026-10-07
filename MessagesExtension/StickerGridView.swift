@@ -1,3 +1,4 @@
+import OpenMojiCore
 import SwiftUI
 
 /// The library grid (tech spec §10, FR-17): the kept stickers, newest first,
@@ -6,7 +7,8 @@ import SwiftUI
 /// (`CompactHomeView`). It reads the library when it appears; whatever changes
 /// the library later calls `AppModel.reloadLibrary()`.
 ///
-/// Touch-and-hold on a cell opens a context menu with Delete (FR-19).
+/// Touch-and-hold on a cell opens a context menu with Delete (FR-19), and shows
+/// the sticker's whole prompt above it, since the cell has no room for it.
 ///
 /// With no stickers it shows the empty state (FR-20), which points at the
 /// button the caller puts under the grid, once a read has succeeded; if the
@@ -41,6 +43,17 @@ struct StickerGridView: View {
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
+                                } preview: {
+                                    // The prompt in full (up to 200 characters, FR-6; the
+                                    // 150-scalar cut is only for VoiceOver), above the sticker.
+                                    // Text styles only, so it follows Dynamic Type.
+                                    VStack(spacing: 12) {
+                                        Text(sticker.prompt).multilineTextAlignment(.center)
+                                        StickerCell(sticker: sticker, url: model.fileURL(for: sticker))
+                                            .aspectRatio(1, contentMode: .fit)
+                                    }
+                                    .padding()
+                                    .frame(width: 280)
                                 }
                         }
                     }
