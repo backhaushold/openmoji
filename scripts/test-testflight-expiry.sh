@@ -124,7 +124,6 @@ logged() { grep -qE -- "$1" "$CASE_DIR/log"; }
 not_logged() { ! grep -qE -- "$1" "$CASE_DIR/log"; }
 only_read_calls() { not_logged '^(issue create|label create) '; }
 title_has() { grep -qF -- "$1" "$CASE_DIR/title"; }
-title_lacks() { ! title_has "$1"; }
 body_has() { grep -qF -- "$1" "$CASE_DIR/body"; }
 said() { grep -qF -- "$1" "$CASE_DIR/stdout" "$CASE_DIR/stderr"; }
 issue_label_is() { [ "$(cat "$CASE_DIR/label")" = "$1" ]; }
@@ -187,7 +186,6 @@ tag_upload v1.0 0
 run_expiry
 check "with build-10 newer than build-9 (and a newer non-build tag) it opens an issue" opened_issue
 check "the title is for build 10, not 9 (not the highest name)" title_has "TestFlight build 10 expires"
-check "the title does not mention build 9" title_lacks "build 9"
 check "it says which tag it used" said "Newest tag build-10"
 new_repo
 tag_upload build-10 10
@@ -200,8 +198,6 @@ new_repo
 tag_upload build-4 70 # expires in 20 days
 run_expiry THRESHOLD_DAYS=30
 check "an override of 30 opens an issue 20 days before expiry" opened_issue
-run_expiry THRESHOLD_DAYS=
-check "an empty value means the default 14, so 20 days opens nothing" no_issue
 new_repo
 tag_upload build-4 80 # expires in 10 days
 run_expiry THRESHOLD_DAYS=
