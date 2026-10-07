@@ -392,7 +392,7 @@ Pass bar: ≥ 17/20 on items 1–4. Record latency and `usage` for each run at `
 | **Expanded – Preview** | Large `MSStickerView` of the processed PNG (written to a temp file), Keep, Regenerate, Discard, editable prompt. Keep writes to `LibraryStore` and returns to the library (the new sticker first); if the write fails, Preview stays with a message and Keep can be tried again. Regenerate generates again from the prompt as edited and writes nothing. Discard drops the sticker, writes nothing and returns to Compose with the prompt as it reads now (`dismissPreview()`); it is disabled while a Keep is running | FR-11, 12 |
 | **Expanded – Error** | Message from §6, prompt intact, Try again | FR-22, 23 |
 | **Settings sheet** | §8 | FR-1–5 |
-| **Library editing** | Context menu on a cell: Delete (FR-19); "Reuse prompt" (FR-21, *Could*) | FR-19, 21 |
+| **Library editing** | Context menu on a cell: Delete (FR-19); "Reuse prompt" (FR-21, *Could*): opens Compose with the sticker's prompt in the field; not offered with no key | FR-19, 21 |
 | **Compact** (only if it ever appears) | Minimal: the same library grid; "New sticker" button → `requestPresentationStyle(.expanded)`; with no key, "Set up OpenMoji" does the same (§8) | FR-17 |
 
 **Expanded first ([ADR-0017](adr/0017-expanded-first-layout.md)).** On the iPad Air with iPadOS 26 the extension opens only in expanded, in portrait and landscape: `requestPresentationStyle(.compact)` is ignored, and dragging down or tapping Messages' own text box dismisses the app (M3 probe, 2026-10-04). So expanded is the real UI, and its landing screen is the library grid, not the prompt. The compact row stays only in case compact ever appears.
@@ -569,7 +569,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
 | FR-18 | `MSStickerView` cells (§10), ADR-0008 | Device checklist (A4) |
 | FR-19 | Context-menu Delete → `LibraryStore.delete` (§4) | `LibraryStore` test |
 | FR-20 | Empty state (§10) | Device checklist |
-| FR-21 | "Reuse prompt" context action (§10) — *Could* | Device checklist if built |
+| FR-21 | "Reuse prompt" context action (§10) — *Could* | `AppModel` test; device checklist |
 | FR-22 | `ErrorMapper` table (§6) | `ErrorMapper` tests, one per row |
 | FR-23 | Error state keeps prompt (§6, §10) | `AppModel` failure test |
 | FR-24 | Keep-only writes, atomic ordering (§4) | `LibraryStore` tests; failure test asserts library unchanged |

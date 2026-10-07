@@ -278,3 +278,108 @@ struct NewStickerTests {
         #expect(model.prompt == "a cat")
     }
 }
+
+/// FR-21: "Reuse prompt" on a library cell opens Compose with that sticker's
+/// prompt as the draft, to edit and generate from.
+@MainActor
+struct ReusePromptTests {
+    @Test func opensComposeWithTheStickersPromptAsTheDraft() {
+        let model = makeModel()
+        model.presentationStyle = .expanded
+        #expect(model.route == .library)
+
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        #expect(model.route == .compose)
+        #expect(model.prompt == "grumpy cat")
+        #expect(model.promptCount == 10)
+        #expect(model.canGenerate)
+        #expect(model.state == .idle)
+    }
+
+    @Test func replacesTheDraftThatWasThere() {
+        let model = makeModel(prompt: "half typed")
+        model.presentationStyle = .expanded
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        #expect(model.prompt == "grumpy cat")
+    }
+
+    @Test func theReusedPromptCanBeEditedLikeAnyOther() {
+        let model = makeModel()
+        model.presentationStyle = .expanded
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        model.prompt += " in a hat"
+        #expect(model.prompt == "grumpy cat in a hat")
+    }
+
+    @Test func aPromptAtTheLimitComesInWhole() {
+        let text = String(repeating: "a", count: AppModel.promptLimit)
+        let model = makeModel()
+        model.presentationStyle = .expanded
+        model.reusePrompt(of: makeSticker(prompt: text))
+        #expect(model.prompt == text)
+    }
+
+    @Test func fromCompactItSetsThePromptAndAsksTheHostToExpand() {
+        let model = makeModel()
+        let requests = ExpandRequests()
+        model.requestExpandedStyle = { requests.record() }
+        #expect(model.route == .compactHome)
+
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        #expect(requests.count == 1)
+        #expect(model.prompt == "grumpy cat")
+
+        // Compose shows once the host reports the expanded style, as for "New sticker".
+        model.presentationStyle = .expanded
+        #expect(model.route == .compose)
+    }
+
+    @Test func withNoKeyItDoesNothingAndALaterKeyLandsOnTheLibrary() {
+        let model = makeModel(key: nil, prompt: "a cat")
+        let requests = ExpandRequests()
+        model.requestExpandedStyle = { requests.record() }
+        model.presentationStyle = .expanded
+        #expect(model.route == .librarySetUp)
+
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        #expect(model.route == .librarySetUp)
+        #expect(!model.isComposing)
+        #expect(model.prompt == "a cat")
+        #expect(requests.count == 0)
+    }
+
+    @Test func whileGeneratingItLeavesTheDraftAlone() async {
+        let generator = FakeGenerator()
+        await generator.hold("a cat")
+        await generator.enqueue(.success(makeProcessedSticker()), for: "a cat")
+        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator, library: FakeLibrary())
+        model.prompt = "a cat"
+        model.generate()
+        guard case .generating(let task) = model.state else {
+            Issue.record("expected generating, got \(model.state)")
+            return
+        }
+
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        #expect(model.prompt == "a cat")
+
+        await generator.release("a cat")
+        await task.value
+    }
+
+    @Test func inPreviewItLeavesTheDraftAlone() async {
+        let generator = FakeGenerator()
+        await generator.enqueue(.success(makeProcessedSticker()), for: "a cat")
+        let model = AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: generator, library: FakeLibrary())
+        model.prompt = "a cat"
+        model.generate()
+        if case .generating(let task) = model.state { await task.value }
+        guard case .preview = model.state else {
+            Issue.record("expected preview, got \(model.state)")
+            return
+        }
+
+        model.reusePrompt(of: makeSticker(prompt: "grumpy cat"))
+        #expect(model.prompt == "a cat")
+    }
+}

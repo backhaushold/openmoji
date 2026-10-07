@@ -162,10 +162,11 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
   - Compact test (N/A: unreachable on iPadOS 26 per [ADR-0017](adr/0017-expanded-first-layout.md))
   - Notes:
 
-- [ ] **FR-21** "Reuse prompt" on a library cell's context menu. *Could* priority: only if built; otherwise mark N/A.
+- [ ] **FR-21** "Reuse prompt" on a library cell's context menu (*Could* priority, built).
   - Source: FR-21 (§13, §10)
-  - How: touch-and-hold a cell and choose Reuse prompt: that sticker's prompt is back in the prompt field.
-  - N/A (not built) [ ]
+  - How: touch-and-hold a cell and choose Reuse prompt: Compose opens with that sticker's prompt in the field, and you can edit it. With no key the menu has Delete only.
+  - Expanded test [ ]
+  - Compact test (N/A: unreachable on iPadOS 26 per [ADR-0017](adr/0017-expanded-first-layout.md))
   - Notes:
 
 - [ ] **NFR-5** Peak memory on the generation-to-keep path stays under 30 MB resident above the idle baseline.
@@ -186,7 +187,7 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
 | FR-17 | `LibraryStore` order test; device checklist | FR-17 |
 | FR-18 | Device checklist (A4) | A-4 / FR-18, AC-4 |
 | FR-20 | Device checklist | FR-20 |
-| FR-21 | Device checklist if built | FR-21 |
+| FR-21 | `AppModel` test; device checklist | FR-21 |
 | NFR-1 | Acceptance criterion 3 | AC-3 |
 | NFR-4 | Acceptance criterion 2 | AC-2 |
 | NFR-5 | Instruments on iPad Air | NFR-5 |
