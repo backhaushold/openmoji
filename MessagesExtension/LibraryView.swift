@@ -5,15 +5,26 @@ import SwiftUI
 /// Compose; with no key it is "Set up OpenMoji", which opens Settings. The
 /// library is never gated on the key, since browsing and sending stickers need
 /// none (NFR-10).
+///
+/// Above the grid is a search field that narrows it to the stickers whose
+/// prompt contains the text (`StickerSearch`). It shows only when the library
+/// has stickers. The query is view state, not saved: it starts empty each time
+/// this screen appears.
 struct LibraryView: View {
     let model: AppModel
     let needsSetUp: Bool
     /// Opens the Settings sheet (`RootView` owns it, as for Compose's gear).
     let onSetUp: () -> Void
 
+    @State private var query = ""
+
     var body: some View {
         VStack(spacing: 12) {
-            StickerGridView(model: model, needsSetUp: needsSetUp)
+            if !model.stickers.isEmpty {
+                LibrarySearchField(query: $query)
+            }
+
+            StickerGridView(model: model, needsSetUp: needsSetUp, query: query)
 
             Button {
                 if needsSetUp { onSetUp() } else { model.startNewSticker() }
