@@ -113,6 +113,11 @@ final class AppModel {
     /// Mirrors the host's presentation style; set by `MessagesViewController`.
     var presentationStyle: MSMessagesAppPresentationStyle = .compact
 
+    /// Counts `willBecomeActive` calls; set by `MessagesViewController`. The
+    /// library clears its search when it changes, so a reopen always starts
+    /// with every sticker showing, even if Messages kept the extension alive.
+    var activationCount = 0
+
     /// Whether the user has opened Compose from the library (ADR-0017). Expanded
     /// and idle shows the library until then; once set, idle shows Compose, so
     /// Cancel, a failure and Edit description all come back to the prompt.

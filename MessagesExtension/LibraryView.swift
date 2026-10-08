@@ -9,7 +9,8 @@ import SwiftUI
 /// Above the grid is a search field that narrows it to the stickers whose
 /// prompt contains the text (`StickerSearch`). It shows only when the library
 /// has stickers. The query is view state, not saved: it starts empty each time
-/// this screen appears.
+/// this screen appears, and is cleared each time the extension becomes active
+/// (`AppModel.activationCount`).
 struct LibraryView: View {
     let model: AppModel
     let needsSetUp: Bool
@@ -39,5 +40,6 @@ struct LibraryView: View {
             )
         }
         .padding()
+        .onChange(of: model.activationCount) { query = "" }
     }
 }
