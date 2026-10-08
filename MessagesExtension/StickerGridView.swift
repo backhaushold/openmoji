@@ -41,9 +41,7 @@ struct StickerGridView: View {
 
     var body: some View {
         Group {
-            if !model.stickers.isEmpty && shown.isEmpty {
-                LibraryNoMatchView(query: StickerSearch.trimmed(query))
-            } else if !model.stickers.isEmpty {
+            if !shown.isEmpty {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(shown) { sticker in
@@ -81,6 +79,8 @@ struct StickerGridView: View {
                 }
                 // So the keyboard the search field raised goes down when the grid is scrolled.
                 .scrollDismissesKeyboard(.interactively)
+            } else if !model.stickers.isEmpty {
+                LibraryNoMatchView(query: StickerSearch.trimmed(query))
             } else {
                 switch model.libraryLoad {
                 case .notLoaded:
