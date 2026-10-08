@@ -137,7 +137,7 @@ Both App IDs must have the App Groups capability enabled with that group before 
 
 **Privacy manifest.** Both targets ship `PrivacyInfo.xcprivacy` declaring no tracking and no collected data types. Required-reason APIs: none planned (no `UserDefaults`, no file-timestamp APIs; `createdAt` lives in the index). Revisit if that changes.
 
-**Icons.** iPad app icon for the shell; an iMessage App Icon set for the extension (Messages requires its own sizes, including the 1024 × 768 marketing image). A missing icon is an upload rejection, as Sagelet learned with its iPad icon. The extension also carries a compiled `MessagesIcon` app-icon set named by `CFBundleIconName` (in both `CFBundleIcons` and `CFBundleIcons~ipad`), so IconServices resolves the icon Messages shows in its + menu from `Assets.car` the way the shell's app icon resolves, instead of from the loose iMessage PNGs (openmoji-98g.3).
+**Icons.** iPad app icon for the shell; an iMessage App Icon set for the extension (Messages requires its own sizes, including the 1024 × 768 marketing image). A missing icon is an upload rejection, as Sagelet learned with its iPad icon. Keep the extension's icon to that 4:3 set: a square app-icon set named by `CFBundleIconName` is resolved first and Messages' + menu stretches it into its 4:3 slot (openmoji-98g.4).
 
 ---
 
