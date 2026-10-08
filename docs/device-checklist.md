@@ -2,7 +2,7 @@
 
 Manual run on the real iPad Air against a TestFlight build ([tech spec §11](tech-spec.md#11-test-strategy), "Device checklist (manual)"). Print or copy this file per run, fill in the header, tick items as they pass and write what you saw under **Notes** for anything that doesn't.
 
-Sources: the nine PRD acceptance criteria are copied verbatim (AC-1 to AC-9). Everything else comes from the [tech spec](tech-spec.md): assumptions A3–A5 (§1.3), NFR-9 and NFR-10 (§10, §13 — worded as the spec words them, not as the PRD does), the halo check (§9, §11, [ADR-0004](adr/0004-imageio-thumbnail-pipeline.md)), and every "Device checklist" row in §13 (see the [coverage map](#coverage-map-tech-spec-13-device-checklist-rows)).
+Sources: the nine PRD acceptance criteria are copied verbatim (AC-1 to AC-9). Everything else comes from the [tech spec](tech-spec.md): assumptions A3–A5 (§1.3), NFR-9 and NFR-10 (§10, §13 — worded as the spec words them, not as the PRD does), the halo check (§9, §11, [ADR-0004](adr/0004-imageio-thumbnail-pipeline.md)), and every "Device checklist" row in §13 (see the [coverage map](#coverage-map-tech-spec-13-device-checklist-rows)). The library search items (§6 below) come from its bead, `openmoji-963.3`, since no FR covers search.
 
 ## Run details
 
@@ -173,6 +173,27 @@ Use a throwaway OpenAI project key for the failure cases in AC-6, never the fami
   - Source: NFR-5 (§13 "Instruments on iPad Air"), §7.2
   - How: attach Xcode Instruments (Allocations) to the Messages extension process on the iPad Air, from a dev-signed build of the same commit (TestFlight builds can't be attached). Note the idle baseline, run Generate, Preview and Keep, and record the peak. The Instruments run is the evidence for NFR-5, not the API's name (§7.2).
   - Idle ______ MB, peak ______ MB, difference ______ MB
+  - Notes:
+
+---
+
+## 6. Library search
+
+The search field above the expanded library (bead `openmoji-963.3`; no FR covers it, so it has no §13 row). Needs a library of at least four stickers, two of them with a word in common in their prompts (for example `grumpy cat` and `grumpy dog`).
+
+- [ ] **SEARCH-1** Typing in the search field filters the grid live.
+  - Source: openmoji-963.3; tech spec §10
+  - How: in the expanded library, tap the search field. The keyboard opens and the extension stays open. Type part of a word from one prompt, in the middle of the word (for example `rump`): only the stickers whose prompt contains it stay, as you type. Type it in capitals and with an accent where the prompt has none (`GRUMPY`, `grümpy`): same result. Type letters that match nothing: the grid is replaced by `No stickers match "…"`, not by the empty-library message. Put only spaces in the field: all stickers show. The query is not saved: swipe Messages away from the app switcher and reopen OpenMoji, and the field is empty with all stickers showing (note under Notes whether it also resets after just closing and reopening the app drawer). With no stickers at all (delete them all) the field is not shown.
+  - Notes:
+
+- [ ] **SEARCH-2** The x at the right-hand end of the search field clears it.
+  - Source: openmoji-963.3
+  - How: type something so the grid is filtered. An x appears at the right-hand end of the field; with the field empty it is not there. Tap the x: the field empties and the full grid returns, also from the no-match message.
+  - Notes:
+
+- [ ] **SEARCH-3** A filtered sticker still peels into a message.
+  - Source: openmoji-963.3; FR-18, A-4
+  - How: filter the grid down to one or two stickers. Touch-and-hold one and peel it onto a bubble in the conversation; also tap one to insert it. Hold without moving to see the context menu: the full prompt shows above the sticker, and Reuse prompt and Delete are there. Delete a filtered sticker: it leaves the grid and the filter stays applied.
   - Notes:
 
 ---

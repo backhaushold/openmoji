@@ -20,21 +20,33 @@ import SwiftUI
 /// stickers arrive; it goes away by itself once a Keep reloads the library and
 /// `model.stickers` has an entry. Stickers already shown stay shown if a later
 /// read fails.
+///
+/// A non-empty `query` narrows the grid to the stickers whose prompt contains
+/// it (`StickerSearch`); if none does, it shows the no-match message, not the
+/// empty state, which is for a library with no stickers. The cells, their menu
+/// and the peel work the same on the narrowed grid, as they key off the sticker.
 struct StickerGridView: View {
     let model: AppModel
     /// No key: the button under the grid is "Set up OpenMoji", not "New sticker".
     let needsSetUp: Bool
+    /// What the library search field holds; empty shows every sticker.
+    var query = ""
 
     private let columns = [GridItem(.adaptive(minimum: 130, maximum: 200), spacing: 12)]
 
     private var compact: Bool { model.presentationStyle == .compact }
 
+    /// The stickers the query leaves, newest first.
+    private var shown: [Sticker] { StickerSearch.filter(model.stickers, query: query) }
+
     var body: some View {
         Group {
-            if !model.stickers.isEmpty {
+            if !model.stickers.isEmpty && shown.isEmpty {
+                LibraryNoMatchView(query: StickerSearch.trimmed(query))
+            } else if !model.stickers.isEmpty {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(model.stickers) { sticker in
+                        ForEach(shown) { sticker in
                             StickerCell(sticker: sticker, url: model.fileURL(for: sticker))
                                 .aspectRatio(1, contentMode: .fit)
                                 .contextMenu {
@@ -67,6 +79,8 @@ struct StickerGridView: View {
                         }
                     }
                 }
+                // So the keyboard the search field raised goes down when the grid is scrolled.
+                .scrollDismissesKeyboard(.interactively)
             } else {
                 switch model.libraryLoad {
                 case .notLoaded:
