@@ -79,6 +79,7 @@ labels `m1`–`m5`), not here.
 
 - Don't reopen a locked PRD decision (D1–D10) or change a FR/NFR/REL without flagging it to the user.
 - Any new significant technical decision gets an ADR in `docs/adr/` (next number, add to its README index).
+- Merging an ADR isn't accepting it. Flip its status to `Accepted (user, <date>)` only on the user's go-ahead.
 - Releases publish **only from the local release Mac** (`make testflight`, secrets from 1Password).
   CI verifies and alerts but never signs or uploads. **No GitHub Actions secrets**; workflows use only `GITHUB_TOKEN`.
 - No third-party SDKs or package dependencies (NFR-7); OpenAI calls go through our own `URLSession` client.
@@ -89,6 +90,7 @@ labels `m1`–`m5`), not here.
   mark it resolved in `docs/open-questions.md`, fix any tech-spec text that says it's open, and update the PRD's line for it.
 - Runs that spend money or need the `.env` token (paid OpenAI calls, real `op`) are run by the user via a `! …` command.
   Agents build and test such scripts with no spend (loopback stub, request cap) and never route around a sandbox refusal.
+- Request caps and spend limits on paid or real-API tools are safety rails. Never remove them as over-engineering (simplification passes included).
 - Keep `swift-tools-version` at the lowest that supports the deployment target (6.2 for `.iOS(.v26)`) so CI stays on
   stock `macos-latest`; don't raise it to match a newer local toolchain.
 - Copy any artifacts you need out of an agent worktree before removing it.
