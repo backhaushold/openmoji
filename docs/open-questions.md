@@ -1,6 +1,6 @@
 # OpenMoji — Open questions
 
-- **As of:** 2026-10-12
+- **As of:** 2026-10-13
 - **Context:** the [tech spec](tech-spec.md) and the [PRD](https://claude.ai/code/artifact/4eb3c358-d044-4b4f-a48b-2aca31cd3bbe)
 
 Resolved items stay listed so the history is visible. "Blocks" names the earliest milestone that needs the answer.
@@ -29,5 +29,5 @@ Resolved items stay listed so the history is visible. "Blocks" names the earlies
 | OQ-13 | Can the internal group "Family" use automatic distribution, so REL-5 needs no API write? | — | **Resolved** 2026-10-03: yes. The first upload (build 51, via `make testflight`) logged "already in group Family": automatic distribution added the CLI-uploaded build. `ensure-in-group` stays as the check |
 | OQ-14 | Alert on the yearly expiry of the distribution certificate and profiles too? | M5 | Proposal: `make testflight-status` also reports profile and certificate expiry (local, via the ASC API); CI can't see them without secrets |
 | OQ-15 | Correct the PRD: GPT Image 2 isn't deprecated; NFR-8's cost is unverified; Apple's 300–618 px is guidance | — | **Resolved** 2026-10-02: PRD updated, also OQ-2 and OQ-3 resolved, REL-4 and REL-9 made local-only |
-| OQ-16 | Where does the parental prompt log live: in the app, on OpenAI's side, or both? And who can see it, for how long? | post-MVP | Bead `openmoji-vqr`, blocks `openmoji-6dr.4`. No own backend (PRD). Needs an ADR. Verify what OpenAI retains against its docs before relying on it |
+| OQ-16 | Where does the parental prompt log live: in the app, on OpenAI's side, or both? And who can see it, for how long? | — | **Resolved** 2026-10-13: in the app only, append-only, shown in Settings as the audit log; never pruned, no parent gate. Nothing OpenAI-side: the Images and moderation endpoints keep nothing a parent can read. [ADR-0020](adr/0020-in-app-prompt-audit-log.md) |
 | OQ-17 | Accept the shipped but still "Proposed" ADRs in one pass? | — | Bead `openmoji-1fx`. 12 of 19 (0001–0005, 0007, 0008, 0011–0013, 0015, 0016) are shipped in build 83 and never formally accepted. Merging isn't acceptance |

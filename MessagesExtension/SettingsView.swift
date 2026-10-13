@@ -1,12 +1,16 @@
+import OpenMojiCore
 import SwiftUI
 
 /// The Settings sheet (tech spec §8, §10; FR-1 to FR-4): one `SecureField`,
 /// Save, Clear. With a key saved the field gives way to `•••• last4`; the key
-/// itself is never put back in a field.
+/// itself is never put back in a field. Below it, a link to the audit log of
+/// prompts (ADR-0020), there with or without a key.
 ///
 /// Text styles only, so everything follows Dynamic Type.
 struct SettingsView: View {
     @Bindable var model: SettingsModel
+    /// Reads the audit log, newest first.
+    let auditLog: () async throws -> [PromptLogEntry]
     /// Closes the sheet, or leaves Settings once a key is saved.
     let onDone: () -> Void
 
@@ -25,6 +29,10 @@ struct SettingsView: View {
                                 .accessibilityHint("Saves the key without checking it")
                         }
                     }
+                }
+                Section {
+                    NavigationLink("Audit log") { AuditLogView(load: auditLog) }
+                        .accessibilityHint("Shows every description sent to make a sticker")
                 }
             }
             .navigationTitle("Settings")

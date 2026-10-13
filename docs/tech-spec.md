@@ -179,6 +179,8 @@ struct LibraryIndex: Codable {
 - *Launch:* load index; if missing or undecodable, rebuild an empty index **without deleting PNGs**, log the fault, and keep the corrupt file as `index.corrupt-<timestamp>.json`. Orphan PNGs (on disk, not in index) are left in place in v1.
 - A failed generation never touches the store; only Keep writes.
 
+**Audit log of prompts ([ADR-0020](adr/0020-in-app-prompt-audit-log.md)).** `PromptLog` appends one JSON line per generation request to `<group>/Library/Application Support/PromptLog/prompts.jsonl`: `{"at": <ISO 8601>, "prompt": <as typed>}`, oldest first. `AppModel.generate()` records the prompt before the generator is called, so Generate, Regenerate and Try again are all on record whatever the outcome. The file is append-only: nothing rewrites, trims or deletes it. A failed write is logged and does not stop the generation. It never holds the API key.
+
 **Accessibility description (FR-15, NFR-2).** Derived at `MSSticker` creation time, not stored: `String(prompt.prefix(150))`, which counts grapheme clusters; Apple's limit is 150 Unicode characters, so truncate by `unicodeScalars` to be safe.
 
 ---
@@ -404,7 +406,7 @@ No text, letters, numbers, captions or watermarks.
 Content: an original, child-friendly design. Never an existing character, brand or real person. No weapons, violence, gore or scary imagery. Read ambiguous words as the plain everyday object.
 ```
 
-The quotes and the sanitising lower the chance that a prompt overrides the template; they do not remove it. The defence is layered (ADR-0018, ADR-0019): this wording, `moderation: "auto"` (§5.1), OpenAI's own filters, our own free `omni-moderation-latest` check of the sanitised subject before the request and of the sticker PNG after it (§5.5), the 200-char cap, the Keep/Regenerate/Discard preview, and parental logging of prompts.
+The quotes and the sanitising lower the chance that a prompt overrides the template; they do not remove it. The defence is layered (ADR-0018, ADR-0019): this wording, `moderation: "auto"` (§5.1), OpenAI's own filters, our own free `omni-moderation-latest` check of the sanitised subject before the request and of the sticker PNG after it (§5.5), the 200-char cap, the Keep/Regenerate/Discard preview, and the audit log of prompts in Settings (§4, ADR-0020).
 
 **M1 evaluation set (20 prompts).** It covers the axes that break emoji style: faces (`grumpy cat`, `grandma laughing`), objects (`taco`, `rocket`), abstract ideas (`brain freeze`, `monday mood`), text-bait (`happy birthday`, `thank you`), fine detail at risk of alpha halos (`fluffy dog`, `curly hair girl`), multi-subject (`two penguins hugging`), family in-jokes (3 chosen by the family) and edge cases (`a`, a 200-character prompt, emoji-only input `🐸☕️`).
 
@@ -430,7 +432,7 @@ Pass bar: ≥ 17/20 on items 1–4. Record latency and `usage` for each run at `
 | **Expanded – Generating** | Progress indicator, "Making your sticker…", Cancel | FR-10 |
 | **Expanded – Preview** | Large `MSStickerView` of the processed PNG (written to a temp file), Keep, Regenerate, Discard, editable prompt. Keep writes to `LibraryStore` and returns to the library (the new sticker first); if the write fails, Preview stays with a message and Keep can be tried again. Regenerate generates again from the prompt as edited and writes nothing. Discard drops the sticker, writes nothing and returns to Compose with the prompt as it reads now (`dismissPreview()`); it is disabled while a Keep is running | FR-11, 12 |
 | **Expanded – Error** | Message from §6, prompt intact, Try again | FR-22, 23 |
-| **Settings sheet** | §8 | FR-1–5 |
+| **Settings sheet** | §8; below the key, "Audit log" opens a read-only list of every prompt a sticker was asked for, newest first, with date and time (§4, ADR-0020) | FR-1–5 |
 | **Library editing** | Context menu on a cell: Delete (FR-19); "Reuse prompt" (FR-21, *Could*): opens Compose with the sticker's prompt in the field; not offered with no key | FR-19, 21 |
 | **Compact** (only if it ever appears) | Minimal: the same library grid; "New sticker" button → `requestPresentationStyle(.expanded)`; with no key, "Set up OpenMoji" does the same (§8) | FR-17 |
 

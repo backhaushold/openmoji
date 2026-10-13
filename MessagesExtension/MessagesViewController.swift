@@ -8,7 +8,8 @@ final class MessagesViewController: MSMessagesAppViewController {
     private let model = AppModel(
         credentials: KeychainCredentialStore(),
         generator: GenerationService(credentials: KeychainCredentialStore(), client: OpenAIClient()),
-        library: MessagesViewController.makeLibrary()
+        library: MessagesViewController.makeLibrary(),
+        promptLog: MessagesViewController.makePromptLog()
     )
 
     /// The library lives in the App Group container (ADR-0005, ADR-0006). A
@@ -17,6 +18,16 @@ final class MessagesViewController: MSMessagesAppViewController {
     private static func makeLibrary() -> LibraryStore {
         do {
             return try LibraryStore()
+        } catch {
+            fatalError("The App Group container is unavailable: \(error)")
+        }
+    }
+
+    /// The audit log lives in the App Group container too (ADR-0020), and
+    /// fails as loudly: prompts must not go unrecorded.
+    private static func makePromptLog() -> PromptLog {
+        do {
+            return try PromptLog()
         } catch {
             fatalError("The App Group container is unavailable: \(error)")
         }

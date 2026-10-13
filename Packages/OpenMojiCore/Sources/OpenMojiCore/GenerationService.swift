@@ -111,8 +111,6 @@ public struct GenerationService: Sendable {
     /// stage and OpenAI's category names, never the prompt or the key.
     private func enforce(_ decision: ModerationDecision, on stage: String) throws(GenerationError) {
         guard case .block(let reasons) = decision else { return }
-        // openmoji-6dr.4 (parental prompt log): a blocked prompt is the one a
-        // parent most wants to see, so record it here when that lands.
         Self.logger.notice("""
             moderation blocked the \(stage, privacy: .public) \
             categories=\(reasons.joined(separator: ","), privacy: .public)

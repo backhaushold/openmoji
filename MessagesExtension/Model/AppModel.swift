@@ -12,9 +12,10 @@ import OSLog
 /// library (FR-11, ADR-0017), and Regenerate, which generates again from the
 /// prompt as edited (FR-12).
 ///
-/// Keep and Delete are the only library writes: nothing is persisted before
+/// Keep and Delete are the only library writes: no sticker is persisted before
 /// Keep, and a generation in flight is simply lost if Messages tears the
-/// extension down (FR-24). The API key is only ever checked for presence; it
+/// extension down (FR-24). Every prompt a generation is asked for goes to the
+/// audit log first, whatever becomes of it (ADR-0020). The API key is only ever checked for presence; it
 /// is never read into state, logged or put in an error (NFR-6).
 @MainActor
 @Observable
@@ -161,6 +162,7 @@ final class AppModel {
     @ObservationIgnored private let credentials: any CredentialStore
     @ObservationIgnored private let generator: any StickerGenerating
     @ObservationIgnored private let library: any StickerLibrary
+    @ObservationIgnored private let promptLog: any PromptLogging
     /// Bumped whenever a generation starts or is abandoned, so a late result
     /// from an abandoned task is dropped.
     @ObservationIgnored private var generationID = 0
@@ -168,10 +170,16 @@ final class AppModel {
     /// can't overwrite a newer one.
     @ObservationIgnored private var libraryLoadID = 0
 
-    init(credentials: any CredentialStore, generator: any StickerGenerating, library: any StickerLibrary) {
+    init(
+        credentials: any CredentialStore,
+        generator: any StickerGenerating,
+        library: any StickerLibrary,
+        promptLog: any PromptLogging
+    ) {
         self.credentials = credentials
         self.generator = generator
         self.library = library
+        self.promptLog = promptLog
         state = .idle
         refreshKey()
     }
@@ -258,6 +266,11 @@ final class AppModel {
     /// Starts generating from `prompt`. Allowed from idle, preview
     /// (Regenerate) and failed (Try again); a blank prompt does nothing
     /// (see `canGenerate`).
+    ///
+    /// The prompt goes to the audit log before the generator is called, so it
+    /// is on record whether the sticker is kept, regenerated, discarded,
+    /// refused or cancelled (ADR-0020). A log write that fails is logged and
+    /// the generation goes ahead.
     func generate() {
         guard canGenerate else { return }
         let text = prompt
@@ -267,7 +280,13 @@ final class AppModel {
         generationID += 1
         let id = generationID
         let generator = generator
+        let promptLog = promptLog
         state = .generating(Task { [weak self] in
+            do {
+                try await promptLog.record(text)
+            } catch {
+                Self.log.error("Could not write the audit log: \(error.localizedDescription, privacy: .public)")
+            }
             let outcome: Result<ProcessedSticker, GenerationError>
             do throws(GenerationError) {
                 outcome = try await .success(generator.generate(prompt: text))
@@ -327,6 +346,11 @@ final class AppModel {
             return
         }
         await reloadLibrary()
+    }
+
+    /// The audit log for Settings, newest first (ADR-0020).
+    func auditLog() async throws -> [PromptLogEntry] {
+        try await promptLog.entries().reversed()
     }
 
     /// Preview → idle, after Keep has written the sticker or the user walks
