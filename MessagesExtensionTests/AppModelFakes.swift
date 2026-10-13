@@ -188,6 +188,42 @@ actor FakeLibrary: StickerLibrary {
     }
 }
 
+/// A `PromptLogging` over an in-memory list, which can fail its writes or its
+/// reads.
+actor FakePromptLog: PromptLogging {
+    struct WriteFailure: Error {}
+    struct ReadFailure: Error {}
+
+    private var stored: [PromptLogEntry]
+    private var failingWrites = false
+    private var failingReads = false
+
+    init(entries: [PromptLogEntry] = []) {
+        stored = entries
+    }
+
+    /// The prompts recorded so far, oldest first.
+    var prompts: [String] { stored.map(\.prompt) }
+
+    func failWrites(_ failing: Bool) {
+        failingWrites = failing
+    }
+
+    func failReads(_ failing: Bool) {
+        failingReads = failing
+    }
+
+    func record(_ prompt: String) async throws {
+        if failingWrites { throw WriteFailure() }
+        stored.append(PromptLogEntry(at: Date(), prompt: prompt))
+    }
+
+    func entries() async throws -> [PromptLogEntry] {
+        if failingReads { throw ReadFailure() }
+        return stored
+    }
+}
+
 func makeSticker(prompt: String = defaultTestPrompt, createdAt: Date = Date(timeIntervalSince1970: 1_000_000)) -> Sticker {
     Sticker(
         id: UUID(),

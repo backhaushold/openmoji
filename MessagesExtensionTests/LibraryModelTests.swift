@@ -10,7 +10,7 @@ import UIKit
 
 @MainActor
 private func makeModel(library: any StickerLibrary) -> AppModel {
-    AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: FakeGenerator(), library: library)
+    AppModel(credentials: InMemoryCredentialStore(key: "test-fake-key-0000"), generator: FakeGenerator(), library: library, promptLog: FakePromptLog())
 }
 
 private func makeTempDirectory() throws -> URL {
@@ -311,7 +311,8 @@ struct LibraryStoreWiringTests {
         let model = AppModel(
             credentials: InMemoryCredentialStore(key: "test-fake-key-0000"),
             generator: generator,
-            library: store
+            library: store,
+            promptLog: FakePromptLog()
         )
         model.presentationStyle = .expanded
 

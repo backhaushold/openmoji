@@ -16,7 +16,7 @@ struct RootView: View {
             // However the sheet closes (Done or a swipe), pick up a key saved in
             // it: needs-key → idle, from "Set up OpenMoji" to "New sticker".
             .sheet(isPresented: $showingSettings, onDismiss: model.refreshKey) {
-                SettingsView(model: settings) { showingSettings = false }
+                SettingsView(model: settings, auditLog: model.auditLog) { showingSettings = false }
             }
     }
 

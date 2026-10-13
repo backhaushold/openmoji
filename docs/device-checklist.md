@@ -2,7 +2,7 @@
 
 Manual run on the real iPad Air against a TestFlight build ([tech spec §11](tech-spec.md#11-test-strategy), "Device checklist (manual)"). Print or copy this file per run, fill in the header, tick items as they pass and write what you saw under **Notes** for anything that doesn't.
 
-Sources: the nine PRD acceptance criteria are copied verbatim (AC-1 to AC-9). Everything else comes from the [tech spec](tech-spec.md): assumptions A3–A5 (§1.3), NFR-9 and NFR-10 (§10, §13 — worded as the spec words them, not as the PRD does), the halo check (§9, §11, [ADR-0004](adr/0004-imageio-thumbnail-pipeline.md)), and every "Device checklist" row in §13 (see the [coverage map](#coverage-map-tech-spec-13-device-checklist-rows)). The library search items (§6 below) come from its bead, `openmoji-963.3`, since no FR covers search.
+Sources: the nine PRD acceptance criteria are copied verbatim (AC-1 to AC-9). Everything else comes from the [tech spec](tech-spec.md): assumptions A3–A5 (§1.3), NFR-9 and NFR-10 (§10, §13 — worded as the spec words them, not as the PRD does), the halo check (§9, §11, [ADR-0004](adr/0004-imageio-thumbnail-pipeline.md)), and every "Device checklist" row in §13 (see the [coverage map](#coverage-map-tech-spec-13-device-checklist-rows)). The library search items (§6 below) come from its bead, `openmoji-963.3`, since no FR covers search; the audit log items (§7) likewise from `openmoji-6dr.4`.
 
 ## Run details
 
@@ -197,6 +197,20 @@ The search field above the expanded library (bead `openmoji-963.3`; no FR covers
   - Notes:
 
 ---
+
+## 7. Audit log of prompts
+
+The parental log in Settings (bead `openmoji-6dr.4`, [ADR-0020](adr/0020-in-app-prompt-audit-log.md); no FR covers it, so it has no §13 row).
+
+- [ ] **LOG-1** Every prompt a sticker was asked for is listed in Settings › Audit log, whatever became of it.
+  - Source: openmoji-6dr.4; ADR-0020; tech spec §4, §10
+  - How: note the time. Generate from one prompt and Keep it. Generate from a second and Discard it. Generate from a third, edit the prompt in Preview and Regenerate. Start a fourth and Cancel while it is generating. Open Settings (the gear in Compose) and tap Audit log: all five prompts are there (the third twice over, as first typed and as edited), newest at the top, each with today's date and the right time.
+  - Notes:
+
+- [ ] **LOG-2** The audit log survives a restart and cannot be changed.
+  - Source: openmoji-6dr.4; ADR-0020
+  - How: after LOG-1, delete the kept sticker from the library, swipe Messages away from the app switcher and reopen OpenMoji: the Audit log still lists every entry, the deleted sticker's prompt included. The list has no edit, delete or clear control. Clear the key in Settings: the Audit log link is still there and the entries are unchanged.
+  - Notes:
 
 ## Coverage map (tech spec §13 "Device checklist" rows)
 

@@ -66,7 +66,7 @@ private func makeRig(
 ) -> Rig {
     let credentials = InMemoryCredentialStore(key: stored)
     let validator = FakeValidator(result: result)
-    let app = AppModel(credentials: credentials, generator: FakeGenerator(), library: FakeLibrary())
+    let app = AppModel(credentials: credentials, generator: FakeGenerator(), library: FakeLibrary(), promptLog: FakePromptLog())
     let model = SettingsModel(
         credentials: credentials,
         validator: validator,
