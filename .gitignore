@@ -35,5 +35,8 @@ spikes/m1/out/
 # M2 safety spike: generated images (raw model output, processed stickers, contact sheets)
 spikes/m2-safety/out/
 
+# M3 faces spike: generated images (raw model output, processed stickers, contact sheets)
+spikes/m3-faces/out/
+
 # Agent reflections from /wrap-up: local-only, never committed
 .claude/REFLECTIONS.md
