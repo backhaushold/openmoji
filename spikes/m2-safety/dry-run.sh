@@ -6,8 +6,8 @@
 # Never calls the real OpenAI API and holds no real key. A tiny python3 HTTP server on 127.0.0.1
 # stands in for the Images API; the spike reaches it through its SPIKE_TEST_ENDPOINT hook (loopback
 # only). The key is a made-up string built at runtime. The cases check: the selftest, the plan, that
-# both templates render exactly what the app's StyleTemplate renders (old: the commit before
-# ADR-0018, new: the current source), the guards that fire before any request, the hard request cap
+# both templates render exactly what the app's StyleTemplate rendered (old: the commit before
+# ADR-0018, new: main just before ADR-0021 changed the Style line), the guards that fire before any request, the hard request cap
 # (within one run and across runs), the request body, that moderation refusals are recorded as
 # results, that repeated failures stop a run and are retried, the rendered sheets and the scores
 # file, and that the key never shows up in the output, the ledger or any file written, even when the
@@ -292,7 +292,7 @@ check "the header has the safe item" grep -q '^template,index,slug,group,i1,i2,i
 check "the committed scores template is current" cmp -s "$PLAN/scores-template.csv" "$HERE/results/scores-template.csv"
 
 # -- the prompts equal the app's --------------------------------------------------
-group "both templates render what the app's StyleTemplate renders"
+group "both templates render what the app's StyleTemplate rendered (ADR-0018 text)"
 PARITY="$TMP/parity"
 mkdir -p "$PARITY/new" "$PARITY/old"
 cat >"$PARITY/main.swift" <<'SWIFT'
@@ -305,12 +305,19 @@ FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: rende
 FileHandle.standardOutput.write(Data("\n".utf8))
 SWIFT
 "$BIN/m2" dump-subjects >"$PARITY/subjects.json"
-cp -f "$PARITY/main.swift" "$PARITY/new/main.swift"
-cp -f "$ROOT/$APP_TEMPLATE" "$PARITY/new/StyleTemplate.swift"
-check "builds a harness around the current StyleTemplate.swift" swiftc -o "$PARITY/new/harness" "$PARITY/new/main.swift" "$PARITY/new/StyleTemplate.swift"
-"$PARITY/new/harness" <"$PARITY/subjects.json" >"$PARITY/app-new.json"
+# `new` is the ADR-0018 text. The app moved on to ADR-0021's Style paragraph, so its parity is checked
+# against StyleTemplate.swift from 139532a (main just before ADR-0021 was adopted), the last revision with
+# the ADR-0018 text, the same way as `old`. The selftest checks the current file differs only in that paragraph.
 "$BIN/m2" dump --templates new >"$PARITY/spike-new.json"
-check "new: all 28 rendered prompts are identical to the app's" cmp -s "$PARITY/app-new.json" "$PARITY/spike-new.json"
+if git -C "$ROOT" cat-file -e "139532a:$APP_TEMPLATE" 2>/dev/null; then
+  cp -f "$PARITY/main.swift" "$PARITY/new/main.swift"
+  git -C "$ROOT" show "139532a:$APP_TEMPLATE" >"$PARITY/new/StyleTemplate.swift"
+  check "builds a harness around StyleTemplate.swift as of ADR-0018" swiftc -o "$PARITY/new/harness" "$PARITY/new/main.swift" "$PARITY/new/StyleTemplate.swift"
+  "$PARITY/new/harness" <"$PARITY/subjects.json" >"$PARITY/app-new.json"
+  check "new: all 28 rendered prompts are identical to the app's as of ADR-0018" cmp -s "$PARITY/app-new.json" "$PARITY/spike-new.json"
+else
+  printf '  skip  new parity: commit 139532a is not in this clone\n'
+fi
 if git -C "$ROOT" cat-file -e "3e65d3b^:$APP_TEMPLATE" 2>/dev/null; then
   cp -f "$PARITY/main.swift" "$PARITY/old/main.swift"
   git -C "$ROOT" show "3e65d3b^:$APP_TEMPLATE" >"$PARITY/old/StyleTemplate.swift"

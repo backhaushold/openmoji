@@ -3,7 +3,8 @@
 Throwaway tooling for openmoji-6dr.6. It sends the same prompts through two templates at `medium`
 quality and lays the results side by side: `old` is the M1 template as first shipped, `new` is the
 child-safe template of [ADR-0018](../../docs/adr/0018-child-safe-prompt-template.md) (what
-`StyleTemplate.render` produces now). The questions are the ADR's two open ones: does the new
+`StyleTemplate.render` produced then; [ADR-0021](../../docs/adr/0021-soften-style-face-clause.md) has since
+changed its Style line, and `new` here stays as measured). The questions are the ADR's two open ones: does the new
 wording **drift** the style (M1's 20 of 20 was for the old text), and does it **fix** `rocket` (Rocket
 Raccoon with guns in live use) and hold against the injection examples from the openmoji-6dr.3
 review? Results and the verdict go in
@@ -149,14 +150,16 @@ bash spikes/m2-safety/dry-run.sh
 ```
 
 `selftest` checks, among others, that `Templates.render("new", "rocket")` equals the ADR-0018 template
-byte for byte, that `new` equals `StyleTemplate.swift` and `old` equals both M1 sources, the sanitiser
+byte for byte, that `new` equals `StyleTemplate.swift` on every line except the Style paragraph that
+ADR-0021 changed (it is not byte-equal any more) and `old` equals both M1 sources, the sanitiser
 against the vectors of `StyleTemplateTests`, the plan (56 requests, under the cap), and `render`
-(sheets, analysis, a pre-filled refusal). If the app template changes (for instance the fallback to
-option B), `selftest` fails until `newText` here is updated, which is the point.
+(sheets, analysis, a pre-filled refusal). If the app template changes again, `selftest` fails
+until this check is updated, which is the point.
 
 `dry-run.sh` never touches the network beyond `127.0.0.1` and uses a made-up key. It checks that:
-both templates render exactly what the app's own `StyleTemplate.swift` renders for all 28 prompts
-(old: the version before ADR-0018, from git; new: the current file); guards fire before any request;
+both templates render exactly what the app's own `StyleTemplate.swift` rendered for all 28 prompts
+(old: the version before ADR-0018, from git; new: the version from commit 139532a, the last with the
+ADR-0018 text, from git); guards fire before any request;
 the cap is enforced within and across runs; a refusal is recorded as a result with its redacted body;
 three failures stop a run and the failed cells are retried; sheets, analysis and scores are written
 and hand scores are never overwritten; and the key appears nowhere on disk or in any output, even

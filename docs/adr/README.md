@@ -24,6 +24,6 @@ One file per significant technical decision in the [tech spec](../tech-spec.md).
 | [0018](0018-child-safe-prompt-template.md) | Child-safe prompt template: quoted subject, a Content line, sanitised input | Accepted |
 | [0019](0019-moderation-check.md) | Screen the prompt text and the generated image with the free moderation endpoint; strict gore/sex policy, fail closed | Accepted |
 | [0020](0020-in-app-prompt-audit-log.md) | Parental prompt log kept in the app: append-only, shown in Settings as the audit log; nothing OpenAI-side | Accepted |
-| [0021](0021-soften-style-face-clause.md) | Soften the style template's face clause so objects don't all get a face; wording chosen by the `spikes/m3-faces` run | Proposed |
+| [0021](0021-soften-style-face-clause.md) | Soften the style template's face clause so objects don't all get a face; wording chosen by the `spikes/m3-faces` run | Accepted (user, 2026-10-17) |
 
 "Accepted" means the user chose the option (on 2026-10-02 unless the ADR gives a later date). "Proposed" means it is recommended in the spec and awaiting review with the spec PR.

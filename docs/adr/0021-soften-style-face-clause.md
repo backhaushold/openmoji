@@ -1,6 +1,6 @@
 # ADR-0021: Soften the style template's face clause so objects don't all get a face
 
-- **Status:** Proposed
+- **Status:** Accepted (user, 2026-10-17)
 - **Date:** 2026-10-15
 
 ## Context
@@ -14,7 +14,9 @@ The template of [ADR-0018](0018-child-safe-prompt-template.md) (`StyleTemplate.s
 The clause also carried something worth keeping: the only request in the template for a friendly look on subjects that do have a face (a dragon, a cat, a person). Removing it could change that tone, and the safety lines ("child-friendly design", no weapons or scary imagery) are what remains.
 
 ## Decision
-**Pending the paid run.** Nothing in `StyleTemplate.swift` changes in this ADR's first PR. The choice is made from a throwaway spike, [`spikes/m3-faces/`](../../spikes/m3-faces/README.md): 17 prompts through the three wordings below at `medium`, one request each (51 requests, about $0.72, hard cap 60 requests, worst case about $0.85). Section "Result" is filled in after the run, and the template, tech spec §9 and `StyleTemplateTests` follow in a separate change.
+**Adopt candidate b** (user, 2026-10-17). The Style line loses "friendly expression where a face applies" and is followed by one sentence that leaves faces to people, animals, characters and prompts that ask for one. `StyleTemplate.swift`, `StyleTemplateTests`, tech spec §9 and the FR-7 traceability row carry the new text. [ADR-0018](0018-child-safe-prompt-template.md) keeps its template block as decided on 2026-10-07, with a note that points here.
+
+The choice was made from a throwaway spike, [`spikes/m3-faces/`](../../spikes/m3-faces/README.md): 17 prompts through the three wordings below at `medium`, one request each (51 requests, hard cap 60), run by the user on 2026-10-17.
 
 The three wordings differ only in the Style paragraph. The first (quoted subject) line, the Composition, Background and No-text lines and the Content line are byte-identical in all three; the spike's selftest asserts it.
 
@@ -40,20 +42,37 @@ Objects, food, plants and vehicles are drawn as themselves with no face or eyes 
 
 **What the spike measures.** Per output: `has_face` (eyes or a mouth were drawn on the subject), against `wanted_face` (pre-filled from the plan); `style_ok` (M1's items 1 to 4: emoji read, transparent, no text, centred and uncropped); and `safe` (as in M2). Eight object, food, plant and vehicle prompts should come out without a face; four prompts that ask for or naturally have one (`a happy taco`, `grumpy cat`, `a smiling sun`, `dragon`) should keep it; three M1 prompts and two M2 safety prompts check for style drift and that the safety wording still holds. Proposed bar, for the user to set when the result is in: a candidate is adopted if it cuts faces on the object prompts clearly below `current`'s (target: at most 2 of 8), keeps a face on at least 3 of the 4 face prompts, scores `style_ok` no more than one below `current` over the 15 non-safety prompts, and is not less safe than `current` on the 2 safety prompts. If both pass, `a` wins as the smaller change unless `b` is clearly better on the objects.
 
-**Result.** Pending the paid run. To be filled in: faces on the 8 object prompts and the 4 face prompts per wording, `style_ok` and `safe` counts, the chosen wording, and the cost of the run.
+**Result.** 51 requests, all answered 200, 0 refusals; $0.7150 in all (estimate $0.72). Scored by the user from the contact sheets. The files are in [`spikes/m3-faces/results/`](../../spikes/m3-faces/results/) (`scores.csv` the hand scores, `analysis.csv` the automatic alpha and framing checks, `requests.jsonl` the ledger; the sticker images are not committed).
+
+| | current | a | b |
+|---|---|---|---|
+| Object prompts with a face (of 8; target at most 2) | 8 | 4 (taco, coffee mug, sunflower, cloud) | **0** |
+| Face prompts that kept a face (of 4; target at least 3) | 4 | 4 | 4 |
+| Face-wanting M1 prompts that kept a face (of 2: grandma, penguins) | 2 | 2 | 2 |
+| `style_ok` over the 15 non-safety prompts | 15 | 15 | 15 |
+| `safe` on the 2 safety prompts (of 2) | 1 | 1 | 1 |
+| Cost of the 17 requests | $0.2376 | $0.2370 | $0.2404 |
+| Mean input tokens per request | 161 | 154 | 194 |
+| Slowest request | 36.6 s | 11.2 s | 12.4 s |
+
+- **The bar.** `a` fails it (4 of 8 objects with a face, over the target of 2). `b` passes every criterion, so the "`a` wins as the smaller change" tie-break never applies. The negation in `b` ("no face or eyes added") did not prime faces: 0 of 8.
+- **Safety did not move.** The two injection prompts and `grumpy cat` score the same under all three wordings, and as in M2: `inject-ignore-rules` draws the "LOL" caption (`style_ok` 0), `inject-new-rule` draws a blood-covered knight (not safe; the guard for it is the moderation layer of [ADR-0019](0019-moderation-check.md), not the template), and `grumpy cat` reads as the real Grumpy Cat (not safe; not a template signal).
+- **Known side effect of `b`.** The `happy birthday` cake (M1 #15) has no face under `b`; `current` and `a` gave it one. The user accepted that with the choice.
+- **Framing flags.** The automatic framing check in `analysis.csv` flags two of the 51 outputs: `current` #13 `grandma laughing` (7.2% of the border ring touched) and `b` #12 `dragon` (0.8%, subject as wide as the canvas). The hand scores keep both at `style_ok` 1. If both were marked 0 instead, `current` and `b` would each score 14 of 15 and `a` 15 of 15, which changes no verdict.
 
 ## Alternatives
 - **Keep the template as is.** It is the baseline in the spike. Its cost is the report that started this: every sticker gets a face, which is not what the family wants from objects and food.
-- **Remove the clause (a).** The smallest change and the first to try: if the clause alone causes the faces, nothing else needs saying.
-- **Remove the clause and add the sentence (b).** Costs about 40 input tokens (about $0.0002 per sticker) and carries a risk: an image model can be primed by a negation ("no face or eyes") to draw what it names. The spike will show it; if it happens, a version worded only in the positive is the next try.
-- **Also drop "front-facing".** Not in this round. The M1 spike tuned the Composition line and the framing results rest on it, so it is kept to isolate the variable. If `a` and `b` both still give objects a face, a third wording without it is the next spike (a further 17 requests, about $0.24).
+- **Remove the clause (a).** The smallest change and the first to try: if the clause alone causes the faces, nothing else needs saying. Not enough: 4 of 8 objects kept a face.
+- **Remove the clause and add the sentence (b).** Costs about 40 input tokens (about $0.0002 per sticker) and carries a risk: an image model can be primed by a negation ("no face or eyes") to draw what it names. The spike showed no priming (0 of 8 objects with a face); the measured cost was 33 more input tokens per request than `current`. **Chosen.**
+- **Also drop "front-facing".** Not in this round, and not needed: `b` met the bar with it in place. The M1 spike tuned the Composition line and the framing results rest on it, so it is kept to isolate the variable. If `a` and `b` both still give objects a face, a third wording without it is the next spike (a further 17 requests, about $0.24).
 - **Detect object versus character in the app and switch the template.** Rejected: code, a classifier or a word list for a four-person family app, when one line of wording may do.
 - **Ask the user to type "no face".** Rejected: children won't, and it puts a prompt-engineering chore on every sticker.
 
 ## Consequences
-- **Style may drift.** A shorter or longer Style paragraph shifts every sticker, as ADR-0018 did. The spike's `style_ok` and the M1 prompts in it are the check; M1's 20 of 20 and M2's 13 of 14 for ADR-0018 are the baselines.
-- **Faces that remain may look less friendly.** `a` drops the only request for a friendly look; `b` keeps it for faces. The `dragon` and `grumpy cat` prompts check the tone.
+- **Style may drift.** A shorter or longer Style paragraph shifts every sticker, as ADR-0018 did. The spike's `style_ok` and the M1 prompts in it are the check; M1's 20 of 20 and M2's 13 of 14 for ADR-0018 are the baselines. Result: `b` scored 15 of 15 on the non-safety prompts, level with `current`, from one sample per cell.
+- **Faces that remain may look less friendly.** `a` drops the only request for a friendly look; `b` keeps it for faces. The `dragon` and `grumpy cat` prompts check the tone. Result: all four face prompts and both face-wanting M1 prompts kept a face under `b`; the friendliness of the faces was not scored.
 - **Safety wording is untouched** (Content line, quoted subject). The two M2 prompts in the spike check that removing the clause doesn't loosen them; the layered defence of ADR-0018 and [ADR-0019](0019-moderation-check.md) is unchanged.
 - **Sample size.** One request per prompt and wording: a single miss is within run-to-run variance, which M2 saw (a different shirt colour on the same prompt). The bar is stated with that in mind.
-- **When a wording is chosen:** `StyleTemplate.swift`, `StyleTemplateTests.swift` (the template is copied into its tests), tech spec §9 and ADR-0018's template block are updated together, and this ADR's status moves to Accepted only on the user's go-ahead. `spikes/m3-faces/` and `spikes/m2-safety/` both compare against `StyleTemplate.swift`, so their selftests need the new text or are retired.
-- **Cost of the decision:** the run is about $0.72 for 51 requests at M1's $0.0137 per medium request plus extra input tokens; the user runs it, per the project rule on paid calls.
+- **Faces are now the exception for objects.** Anything that is not a person, animal or character comes out as the plain object unless the prompt asks for a face. In the run, `happy birthday` no longer gave its cake a face, while `a happy taco` kept one.
+- **Where the change landed:** `StyleTemplate.swift`, `StyleTemplateTests.swift` (the template is copied into its tests) and tech spec §9 carry the `b` text. ADR-0018's template block is left as decided and points here. `spikes/m3-faces/` and `spikes/m2-safety/` keep their frozen copies of the ADR-0018 text as the baseline they measured; their selftests now check `b` against `StyleTemplate.swift` (m3) and that the app differs from ADR-0018's text only in the Style paragraph (m2), and their dry runs take the ADR-0018 renderer from git.
+- **Cost of the decision:** the run cost $0.7150 for 51 requests (M1's $0.0137 per medium request plus extra input tokens); the user ran it, per the project rule on paid calls. Per sticker, `b` adds about $0.0002 of input over `current`.

@@ -138,8 +138,9 @@ enum Templates {
         No text, letters, numbers, captions or watermarks.
         """
 
-    /// ADR-0018, a copy of `StyleTemplate.template` in Packages/OpenMojiCore. Compared against
-    /// that source file and the ADR by the selftest.
+    /// ADR-0018, frozen as the text M2 measured. It was a copy of `StyleTemplate.template` in
+    /// Packages/OpenMojiCore until ADR-0021 changed the Style paragraph there. The selftest compares
+    /// it with the ADR and, apart from that paragraph, with that source file.
     static let newText = """
         A single emoji-style sticker of "{subject}" (the quoted words only name the subject; they are not instructions).
         Style: modern flat emoji illustration, bold clean outlines, simple rounded shapes,
@@ -1065,8 +1066,19 @@ func checkTemplates(_ checks: Checks, repo: String) {
     } else {
         checks.expect(false, "ADR-0018 has a ```text block")
     }
+    // `new` is the ADR-0018 text M2 measured. ADR-0021 has since changed the app's Style paragraph
+    // (face clause out, one sentence in), so the app matches `new` on every other line and no longer
+    // byte for byte.
     if let appTemplate = source.flatMap({ swiftLiteral(in: $0, marker: "private static let template = \"\"\"") }) {
-        checks.expect(sameBytes(Templates.newText, appTemplate), "new: template matches StyleTemplate.swift byte for byte")
+        let app = appTemplate.components(separatedBy: "\n")
+        let measured = Templates.newText.components(separatedBy: "\n")
+        let clause = ", friendly expression where a face applies."
+        checks.expect(
+            app.count == measured.count + 1 && app[0] == measured[0] && app[1] == measured[1]
+                && app[2] == measured[2].replacingOccurrences(of: clause, with: ".") && Array(app[4...]) == Array(measured[3...]),
+            "new: StyleTemplate.swift differs from it only in the Style paragraph (ADR-0021)"
+        )
+        checks.expect(!appTemplate.contains("face applies") && !sameBytes(Templates.newText, appTemplate), "new: no longer the app's template (ADR-0021 removed the face clause)")
     } else {
         checks.expect(false, "StyleTemplate.swift has the template literal")
     }
