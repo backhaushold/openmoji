@@ -34,8 +34,8 @@ a,11,smiling-sun,face,y,y,1,1,
 b,11,smiling-sun,face,y,y,1,1,
 current,12,dragon,face,y,y,1,1,
 a,12,dragon,face,y,y,1,1,
-b,12,dragon,face,y,y,1,1,
-current,13,grandma-laughing,m1,y,y,1,1,
+b,12,dragon,face,y,y,0,1,framing check failed (subject touches the canvas edge)
+current,13,grandma-laughing,m1,y,y,0,1,framing check failed (subject touches the canvas edge)
 a,13,grandma-laughing,m1,y,y,1,1,
 b,13,grandma-laughing,m1,y,y,1,1,
 current,14,two-penguins-hugging,m1,y,y,1,1,
