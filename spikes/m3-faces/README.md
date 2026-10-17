@@ -1,10 +1,13 @@
 # M3 faces spike: does the style template give every sticker a face?
 
 Throwaway tooling for openmoji-6dr.9. A family tester reported that every generated sticker has eyes and a
-face, even plain objects. This sends the same prompts through the template as shipped and two candidates that
-soften the face wording, at `medium` quality, and lays the results side by side. The decision it feeds is
-[ADR-0021](../../docs/adr/0021-soften-style-face-clause.md) (Proposed); nothing in `StyleTemplate.swift` changes
-until the run is scored and the user picks a wording.
+face, even plain objects. This sends the same prompts through the template as ADR-0018 shipped it and two
+candidates that soften the face wording, at `medium` quality, and lays the results side by side. The decision it
+fed is [ADR-0021](../../docs/adr/0021-soften-style-face-clause.md) (Accepted, 2026-10-17).
+
+**Status: done.** The user ran it on 2026-10-17 (51 requests, $0.7150) and picked `b`, which `StyleTemplate.swift`
+now carries. The results are in [`results/`](results/) (`scores.csv`, `analysis.csv`, `requests.jsonl`) and
+summarised in the ADR. `current`, `a` and `b` stay in `spike.swift` as the frozen texts that were measured.
 
 Nothing here is part of the app, `OpenMojiCore` or CI. Same approach as [spikes/m2-safety](../m2-safety/README.md)
 (copied and adapted): Foundation, ImageIO and CoreGraphics only, a ledger, a hard request cap, the section 7
@@ -63,9 +66,9 @@ capped at 200 characters) and the quoted-subject first line. They differ only in
 
 | Template | Style paragraph |
 |---|---|
-| `current` | The shipped template (ADR-0018), an exact copy of `StyleTemplate.template`: "...glossy highlight, friendly expression where a face applies." |
+| `current` | The template as ADR-0018 shipped it, an exact copy of the ADR-0018 text (the app's `StyleTemplate.template` until ADR-0021): "...glossy highlight, friendly expression where a face applies." |
 | `a` | The face clause removed. The Style line ends at "glossy highlight." |
-| `b` | `a`, plus one sentence on its own line continuing the Style paragraph: "Objects, food, plants and vehicles are drawn as themselves with no face or eyes added; only people, animals and characters get a friendly face, or any other subject when the description asks for one." |
+| `b` | `a`, plus one sentence on its own line continuing the Style paragraph: "Objects, food, plants and vehicles are drawn as themselves with no face or eyes added; only people, animals and characters get a friendly face, or any other subject when the description asks for one." **Adopted (ADR-0021):** an exact copy of the app's `StyleTemplate.template`. |
 
 Choices made, for the user to veto:
 
@@ -175,18 +178,17 @@ swift spikes/m3-faces/spike.swift selftest
 bash spikes/m3-faces/dry-run.sh
 ```
 
-`selftest` checks, among others, that `current` equals `StyleTemplate.swift` and the ADR-0018 template byte for
-byte; that `a` is `current` with only the face clause removed and `b` is `a` plus one line; that the first line,
+`selftest` checks, among others, that `current` equals the ADR-0018 template byte for byte and `b` equals
+`StyleTemplate.swift` (and that `current` no longer does); that `a` is `current` with only the face clause removed and `b` is `a` plus one line; that the first line,
 the Composition, Background and No-text lines and the `Content:` line are identical in all three; that the
 candidate Style paragraphs in ADR-0021 match the ones here; the sanitiser against the vectors of
 `StyleTemplateTests` for every template; the plan (51 requests, under the cap, worst case under $1.00); and
-`render` (sheets, analysis, a pre-filled refusal). Once the app's template changes (the adopted wording), `current`
-no longer equals `StyleTemplate.swift` and `selftest` fails until this spike is retired or updated, which is the
-point.
+`render` (sheets, analysis, a pre-filled refusal). If the app's template changes again, the `b` comparison with
+`StyleTemplate.swift` fails until this spike is retired or updated, which is the point.
 
-`dry-run.sh` never touches the network beyond `127.0.0.1` and uses a made-up key. It checks that: `current`
-renders exactly what the app's own `StyleTemplate.swift` renders for all 17 prompts, and `a` and `b` equal it with
-only the Style paragraph changed; guards fire before any request; the cap is enforced within and across runs; a
+`dry-run.sh` never touches the network beyond `127.0.0.1` and uses a made-up key. It checks that: `b` renders
+exactly what the app's own `StyleTemplate.swift` renders for all 17 prompts (and `current` no longer does), and `a`
+and `b` equal `current` with only the Style paragraph changed; guards fire before any request; the cap is enforced within and across runs; a
 refusal is recorded as a result with its redacted body; three failures stop a run and the failed cells are
 retried; sheets, analysis and scores are written and hand scores are never overwritten; and the key appears
 nowhere on disk or in any output, even though the stub echoes it back in its error bodies.

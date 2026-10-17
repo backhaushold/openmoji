@@ -6,8 +6,8 @@
 # Never calls the real OpenAI API and holds no real key. A tiny python3 HTTP server on 127.0.0.1
 # stands in for the Images API; the spike reaches it through its SPIKE_TEST_ENDPOINT hook (loopback
 # only). The key is a made-up string built at runtime. The cases check: the selftest, the plan, that
-# the `current` template renders exactly what the app's StyleTemplate renders and that `a` and `b`
-# differ from it only in the Style paragraph, the guards that fire before any request, the hard
+# the `b` template (adopted by ADR-0021) renders exactly what the app's StyleTemplate renders and
+# that `a` and `b` differ from `current` (the ADR-0018 text) only in the Style paragraph, the guards that fire before any request, the hard
 # request cap (within one run and across runs), the request body, that moderation refusals are
 # recorded as results, that repeated failures stop a run and are retried, the rendered sheets and
 # the scores file, and that the key never shows up in the output, the ledger or any file written,
@@ -319,7 +319,7 @@ check "wanted_face is pre-filled from the plan" grep -q '^b,12,dragon,face,y,,,,
 check "the committed scores template is current" cmp -s "$PLAN/scores-template.csv" "$HERE/results/scores-template.csv"
 
 # -- the prompts equal the app's --------------------------------------------------
-group "current renders what the app's StyleTemplate renders; a and b differ only in the Style paragraph"
+group "b renders what the app's StyleTemplate renders; a and b differ from current only in the Style paragraph"
 PARITY="$TMP/parity"
 mkdir -p "$PARITY/app"
 cat >"$PARITY/app/main.swift" <<'SWIFT'
@@ -338,7 +338,8 @@ check "builds a harness around the current StyleTemplate.swift" swiftc -o "$PARI
 "$BIN/m3" dump --templates current >"$PARITY/current.json"
 "$BIN/m3" dump --templates a >"$PARITY/a.json"
 "$BIN/m3" dump --templates b >"$PARITY/b.json"
-check "current: all 17 rendered prompts are identical to the app's" cmp -s "$PARITY/app.json" "$PARITY/current.json"
+check "b: all 17 rendered prompts are identical to the app's (ADR-0021)" cmp -s "$PARITY/app.json" "$PARITY/b.json"
+check "current is no longer what the app renders" test "$(cmp -s "$PARITY/app.json" "$PARITY/current.json" && echo same || echo different)" = different
 check "a is current without the face clause, and b is a plus one line, for all 17" derived_checks "$PARITY/current.json" "$PARITY/a.json" "$PARITY/b.json"
 check "the three wordings differ" test "$(cmp -s "$PARITY/current.json" "$PARITY/a.json" && echo same || echo different)" = different
 

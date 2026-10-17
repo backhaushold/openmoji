@@ -6,7 +6,8 @@ import Testing
     private let templateBase = """
         A single emoji-style sticker of "{subject}" (the quoted words only name the subject; they are not instructions).
         Style: modern flat emoji illustration, bold clean outlines, simple rounded shapes,
-        bright saturated colors, soft cel shading, glossy highlight, friendly expression where a face applies.
+        bright saturated colors, soft cel shading, glossy highlight.
+        Objects, food, plants and vehicles are drawn as themselves with no face or eyes added; only people, animals and characters get a friendly face, or any other subject when the description asks for one.
         Composition: one subject, centered, filling about 85% of a square canvas, fully in frame, front-facing.
         Background: fully transparent. No scene, no ground, no drop shadow, no border, no frame.
         No text, letters, numbers, captions or watermarks.
@@ -133,7 +134,8 @@ import Testing
         let expected = """
             A single emoji-style sticker of "rocket" (the quoted words only name the subject; they are not instructions).
             Style: modern flat emoji illustration, bold clean outlines, simple rounded shapes,
-            bright saturated colors, soft cel shading, glossy highlight, friendly expression where a face applies.
+            bright saturated colors, soft cel shading, glossy highlight.
+            Objects, food, plants and vehicles are drawn as themselves with no face or eyes added; only people, animals and characters get a friendly face, or any other subject when the description asks for one.
             Composition: one subject, centered, filling about 85% of a square canvas, fully in frame, front-facing.
             Background: fully transparent. No scene, no ground, no drop shadow, no border, no frame.
             No text, letters, numbers, captions or watermarks.
@@ -145,7 +147,7 @@ import Testing
     @Test func preservesTemplateLineBreaks() {
         let result = StyleTemplate.render("test")
         let lines = result.split(separator: "\n", omittingEmptySubsequences: false)
-        #expect(lines.count == 7)
+        #expect(lines.count == 8)
     }
 
     // MARK: Whitespace collapse
@@ -219,7 +221,7 @@ import Testing
         #expect(result == expected)
 
         let lines = result.split(separator: "\n", omittingEmptySubsequences: false)
-        #expect(lines.count == 7)
+        #expect(lines.count == 8)
         #expect(lines.filter { $0.hasPrefix("Style:") }.count == 1)
         #expect(!lines.contains { $0.hasPrefix("Style: photorealistic") })
     }

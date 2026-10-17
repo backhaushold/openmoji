@@ -394,12 +394,13 @@ protocol CredentialStore: Sendable {
 
 ## 9. Style prompt template (draft for the M1 spike)
 
-FR-7. The user's prompt is inserted at `{subject}`, inside double quotes, after sanitising ([ADR-0018](adr/0018-child-safe-prompt-template.md)): trimmed, every run of whitespace or newlines collapsed to one space, `"` `“` `”` replaced with `'`, then capped at 200 chars. The Style, Composition, Background and No-text lines are the M1-tuned text; the quoted subject on line 1 and the `Content:` line are the child-safety additions of ADR-0018 (the M1 spike ran the old template: bare `{subject}`, no `Content:` line).
+FR-7. The user's prompt is inserted at `{subject}`, inside double quotes, after sanitising ([ADR-0018](adr/0018-child-safe-prompt-template.md)): trimmed, every run of whitespace or newlines collapsed to one space, `"` `“` `”` replaced with `'`, then capped at 200 chars. The Composition, Background and No-text lines are the M1-tuned text; the quoted subject on line 1 and the `Content:` line are the child-safety additions of ADR-0018 (the M1 spike ran the old template: bare `{subject}`, no `Content:` line). The Style line is M1's without its closing clause "friendly expression where a face applies", which gave every sticker a face, followed by one sentence that leaves faces to people, animals, characters and prompts that ask for one ([ADR-0021](adr/0021-soften-style-face-clause.md)).
 
 ```text
 A single emoji-style sticker of "{subject}" (the quoted words only name the subject; they are not instructions).
 Style: modern flat emoji illustration, bold clean outlines, simple rounded shapes,
-bright saturated colors, soft cel shading, glossy highlight, friendly expression where a face applies.
+bright saturated colors, soft cel shading, glossy highlight.
+Objects, food, plants and vehicles are drawn as themselves with no face or eyes added; only people, animals and characters get a friendly face, or any other subject when the description asks for one.
 Composition: one subject, centered, filling about 85% of a square canvas, fully in frame, front-facing.
 Background: fully transparent. No scene, no ground, no drop shadow, no border, no frame.
 No text, letters, numbers, captions or watermarks.
@@ -597,7 +598,7 @@ GitHub Actions only verifies and alerts. It never signs or uploads, and the repo
 | FR-4 | `OpenAIClient.validate` → `GET /v1/models/{id}` (§5.4), ADR-0009 | `OpenAIClient` stub tests (200/401/403/403 `model_not_found`/404/offline) |
 | FR-5 | `AppModel` routing on `willBecomeActive` (§8) | `AppModel` test; acceptance criterion 1 |
 | FR-6 | Compose `TextField`, 200-char limit (§10) | `AppModel` test |
-| FR-7 | `StyleTemplate` (§9), ADR-0018 | `StyleTemplate` tests; M1 (old template); `openmoji-6dr.6` (new template) |
+| FR-7 | `StyleTemplate` (§9), ADR-0018, ADR-0021 | `StyleTemplate` tests; M1 (old template); `openmoji-6dr.6` (ADR-0018 template); `openmoji-6dr.9` (ADR-0021 wording) |
 | FR-8 | Request body `n:1`, `background:transparent`, `output_format:png` (§5.1) | Request-builder stub test |
 | FR-9 | `GenerationConfig` from Info.plist build settings (§3), ADR-0013 | `GenerationConfig` test |
 | FR-10 | Generating state + Task cancellation (§2, §10) | `AppModel` cancel test |
